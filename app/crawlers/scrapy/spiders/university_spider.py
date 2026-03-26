@@ -2,7 +2,7 @@
 
 import scrapy
 
-from app.crawlers.parsers.html_parser import extract_links
+from app.crawlers.parsers.html_parser import extract_links, program_page_metadata
 
 
 class UniversitySpider(scrapy.Spider):
@@ -11,12 +11,13 @@ class UniversitySpider(scrapy.Spider):
     name = "university_spider"
     allowed_domains: list[str] = []
 
-    def __init__(self, start_urls=None, *args, **kwargs):
+    def __init__(self, *args, **kwargs):
+        start_urls = kwargs.pop("start_urls", None)
         super().__init__(*args, **kwargs)
         if start_urls:
             self.start_urls = start_urls if isinstance(start_urls, list) else [start_urls]
 
-    def parse(self, response, **kwargs):
+    def parse(self, response):
         """Extract program links from a university's programs listing page."""
         program_links = extract_links(response.text, response.url)
         self.logger.info("Found %d program links on %s", len(program_links), response.url)
@@ -26,10 +27,5 @@ class UniversitySpider(scrapy.Spider):
 
     def parse_program_page(self, response):
         """Extract basic metadata from an individual program page."""
-        from app.crawlers.parsers.html_parser import extract_basic_metadata
-
-        metadata = extract_basic_metadata(response.text)
-        metadata["source_url"] = response.url
-        metadata["university_url"] = response.request.headers.get("Referer", b"").decode("utf-8", errors="ignore")
-
-        yield metadata
+        referer = response.request.headers.get("Referer", b"").decode("utf-8", errors="ignore")
+        yield program_page_metadata(response.text, response.url, university_url=referer)

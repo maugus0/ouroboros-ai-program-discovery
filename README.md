@@ -7,6 +7,7 @@ University program crawling, metadata extraction, and ranked recommendation serv
 ## Table of Contents
 
 - [Overview](#overview)
+- [Implementation status](#implementation-status)
 - [Architecture](#architecture)
 - [Features](#features)
 - [Prerequisites](#prerequisites)
@@ -43,6 +44,33 @@ The Program Discovery Agent is responsible for:
 - No ORM overhead — raw SQL with `aiomysql` async connection pool
 - Ethical crawling — robots.txt compliance, configurable delays, user-agent rotation
 - LLM cost tracking — every API call logged with token counts and cost
+
+---
+
+## Implementation status
+
+### Implemented in this repository
+
+| Area | Status |
+|------|--------|
+| FastAPI app, lifespan, DB pool, service-token auth | Done |
+| Program search, detail, ranking (weighted scoring) | Done |
+| Crawl jobs (on-demand + batch), status APIs | Done |
+| Scrapy batch spiders + httpx on-demand crawler | Done |
+| HTML + LLM extraction with provider fallback | Done |
+| APScheduler weekly batch hook | Done |
+| MySQL migrations (universities, programs, requirements, crawl jobs, LLM logs) | Done |
+| Scripts: migrations, seed universities, service token, manual batch trigger | Done |
+| Unit + integration tests, GitHub Actions CI (format, lint, test, mypy, bandit, Docker) | Done |
+| Docker / Compose for app + MySQL | Done |
+
+### Not implemented or out of scope here
+
+| Item | Notes |
+|------|--------|
+| **Orchestrator contract** | The platform orchestrator may still call `POST /discover` with `{ user_id, profile }`. This service exposes `POST /api/v1/programs/search` with `ProgramSearchRequest`. Wire the orchestrator client or add a compatibility route when integrating. |
+| **Country filter** | `country` on search is accepted but filtering may be partial until schema/query fully use it. |
+| **Live DB field on `/health`** | Response currently returns a static `"database": "not_connected"` (same pattern as sibling agents). A pool ping would require a small enhancement if you need real connectivity in JSON. |
 
 ---
 
@@ -352,9 +380,11 @@ All endpoints except health checks require the `X-Service-Token` header.
 {
   "status": "healthy",
   "version": "0.1.0",
-  "database": "connected"
+  "database": "not_connected"
 }
 ```
+
+The `database` field is a static placeholder for parity with other agents; it does not reflect a live pool check.
 
 ### Program Search
 
@@ -641,17 +671,20 @@ pylint app/ tests/
 mypy app/ --ignore-missing-imports --no-strict-optional
 
 # Run tests
-ALLOW_DB_FAILURE=true pytest tests/ -v
+ALLOW_DB_FAILURE=true USE_MOCK_DATA=true X_SERVICE_TOKEN=test-service-token pytest tests/ -v
 ```
 
 ### Pre-Commit Script
 
 ```bash
+python -m venv .venv
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
+pip install -r requirements-dev.txt
 chmod +x pre-commit-check.sh
 ./pre-commit-check.sh
 ```
 
-Runs Black, isort, flake8, pylint, syntax validation, tests, and mypy in sequence.
+Runs Black, isort, flake8, pylint, syntax validation, tests, and mypy in sequence. Use an activated virtual environment so those tools are on your `PATH` (the script auto-activates `.venv`, `venv`, or `env` if present).
 
 ---
 
@@ -666,9 +699,11 @@ ALLOW_DB_FAILURE=true USE_MOCK_DATA=true X_SERVICE_TOKEN=test-service-token pyte
 ### Run with Coverage
 
 ```bash
-ALLOW_DB_FAILURE=true pytest tests/ --cov=app --cov-report=html -v
+ALLOW_DB_FAILURE=true USE_MOCK_DATA=true X_SERVICE_TOKEN=test-service-token pytest tests/ --cov=app --cov-report=html -v
 open htmlcov/index.html
 ```
+
+Pytest picks up **`pytest.ini`** (paths, `addopts`, `filterwarnings`) and mirrors the same options under `[tool.pytest.ini_options]` in **`pyproject.toml`** for editors and tooling — matching the Student Profile agent layout.
 
 ### Test Structure
 
@@ -699,9 +734,11 @@ tests/
 
 ## CI/CD Pipeline
 
-**Workflow**: `.github/workflows/deploy.yml`
+**Workflow**: `.github/workflows/deploy.yml` (named **OuroborosAI Program Discovery CI/CD Pipeline** in GitHub)
 
 **Trigger**: Pull requests to `main` or `develop`
+
+Shared lint rules live in `.pylintrc` (line length, docstring / design relaxations, similarity thresholds).
 
 ### Pipeline Stages
 
@@ -737,7 +774,7 @@ isort --check-only app/ tests/
 flake8 app/ tests/ --max-line-length=120 --extend-ignore=E203,W503,E501
 pylint app/ tests/
 mypy app/ --ignore-missing-imports --no-strict-optional
-ALLOW_DB_FAILURE=true pytest tests/ -v
+ALLOW_DB_FAILURE=true USE_MOCK_DATA=true X_SERVICE_TOKEN=test-service-token pytest tests/ -v
 bandit -r app/ || true
 docker build -t program-discovery-agent .
 ```

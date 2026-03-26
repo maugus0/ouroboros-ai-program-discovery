@@ -9,6 +9,7 @@ os.environ.setdefault("USE_MOCK_DATA", "true")
 os.environ.setdefault("X_SERVICE_TOKEN", "test-service-token")
 
 from app.config import settings  # noqa: E402  # pylint: disable=wrong-import-position
+from app.models.program import StudentProfileSummary  # noqa: E402  # pylint: disable=wrong-import-position
 
 
 @pytest.fixture
@@ -56,8 +57,6 @@ def sample_program():
 @pytest.fixture
 def sample_student_profile():
     """A sample student profile for ranking tests."""
-    from app.models.program import StudentProfileSummary
-
     return StudentProfileSummary(
         gpa=3.8,
         gpa_scale=4.0,
