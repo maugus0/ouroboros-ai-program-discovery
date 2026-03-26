@@ -2,7 +2,7 @@
 
 import scrapy
 
-from app.crawlers.parsers.html_parser import extract_basic_metadata
+from app.crawlers.parsers.html_parser import program_page_metadata
 
 
 class ProgramDetailSpider(scrapy.Spider):
@@ -10,15 +10,12 @@ class ProgramDetailSpider(scrapy.Spider):
 
     name = "program_detail_spider"
 
-    def __init__(self, urls=None, *args, **kwargs):
+    def __init__(self, *args, **kwargs):
+        urls = kwargs.pop("urls", None)
         super().__init__(*args, **kwargs)
         if urls:
             self.start_urls = urls if isinstance(urls, list) else [urls]
 
-    def parse(self, response, **kwargs):
+    def parse(self, response):
         """Extract detailed program metadata from a single program page."""
-        metadata = extract_basic_metadata(response.text)
-        metadata["source_url"] = response.url
-        metadata["html_length"] = len(response.text)
-
-        yield metadata
+        yield program_page_metadata(response.text, response.url, html_length=len(response.text))

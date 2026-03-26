@@ -1,5 +1,9 @@
 """Tests for the weighted ranking service."""
 
+# Exercises small scoring helpers that are intentionally private.
+
+# pylint: disable=protected-access
+
 from app.models.program import StudentProfileSummary
 from app.services.ranking_service import RankingService
 

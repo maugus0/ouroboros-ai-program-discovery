@@ -2,6 +2,7 @@
 
 import re
 from typing import Any, Optional
+from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
 
@@ -57,6 +58,14 @@ def extract_basic_metadata(html: str) -> dict[str, Any]:
     return result
 
 
+def program_page_metadata(html: str, source_url: str, **extra: Any) -> dict[str, Any]:
+    """Build basic program metadata dict with ``source_url`` and optional spider fields."""
+    metadata = extract_basic_metadata(html)
+    metadata["source_url"] = source_url
+    metadata.update(extra)
+    return metadata
+
+
 def extract_links(html: str, base_url: str) -> list[str]:
     """Extract all links from a page that might lead to program detail pages."""
     soup = BeautifulSoup(html, "lxml")
@@ -65,13 +74,14 @@ def extract_links(html: str, base_url: str) -> list[str]:
     program_keywords = ["program", "course", "degree", "master", "phd", "bachelor", "graduate", "admission"]
 
     for anchor in soup.find_all("a", href=True):
-        href = anchor["href"]
+        raw_href = anchor.get("href")
+        if not raw_href or not isinstance(raw_href, str):
+            continue
+        href = raw_href.strip()
         text = anchor.get_text(strip=True).lower()
 
         if any(kw in href.lower() or kw in text for kw in program_keywords):
             if href.startswith("/"):
-                from urllib.parse import urljoin
-
                 href = urljoin(base_url, href)
             if href.startswith("http"):
                 links.append(href)

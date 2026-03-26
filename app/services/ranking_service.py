@@ -154,7 +154,9 @@ class RankingService:
         return days_until / 365.0
 
     @staticmethod
-    def _score_tuition_affordability(program: dict[str, Any], profile: Optional[StudentProfileSummary]) -> float:
+    def _score_tuition_affordability(  # pylint: disable=too-many-return-statements
+        program: dict[str, Any], profile: Optional[StudentProfileSummary]
+    ) -> float:
         """Score 0-1: lower tuition relative to budget scores higher."""
         tuition = program.get("tuition_usd")
         if tuition is None:

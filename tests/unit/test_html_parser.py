@@ -6,6 +6,7 @@ from app.crawlers.parsers.html_parser import (
     _extract_tuition,
     extract_basic_metadata,
     extract_page_text,
+    program_page_metadata,
 )
 
 
@@ -27,6 +28,14 @@ def test_extract_basic_metadata_title():
     html = "<html><head><title>MSc Data Science</title></head><body><h1>Master of Data Science</h1></body></html>"
     metadata = extract_basic_metadata(html)
     assert metadata["program_name"] == "Master of Data Science"
+
+
+def test_program_page_metadata_adds_source_and_extra():
+    html = "<html><head><title>X</title></head><body></body></html>"
+    meta = program_page_metadata(html, "https://example.edu/p", html_length=42, university_url="https://u.edu")
+    assert meta["source_url"] == "https://example.edu/p"
+    assert meta["html_length"] == 42
+    assert meta["university_url"] == "https://u.edu"
 
 
 def test_detect_degree_type_phd():

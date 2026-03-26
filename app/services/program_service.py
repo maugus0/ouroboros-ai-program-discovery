@@ -1,10 +1,10 @@
 """Program search, filter, and rank orchestration."""
 
-from typing import Any, Optional
+from typing import Any
 
 from app.config import settings
 from app.core.logging import get_logger
-from app.models.program import ProgramSearchRequest, StudentProfileSummary
+from app.models.program import ProgramSearchRequest
 from app.repositories.mysql_program_repo import ProgramRepository
 from app.repositories.mysql_requirement_repo import RequirementRepository
 from app.repositories.mysql_university_repo import UniversityRepository

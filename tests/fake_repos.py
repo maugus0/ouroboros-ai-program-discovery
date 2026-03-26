@@ -27,6 +27,8 @@ class FakeProgramRepository:
             items = [p for p in items if field.lower() in (p.get("field") or "").lower()]
         if degree_type:
             items = [p for p in items if p.get("degree_type") == degree_type]
+        if university_id:
+            items = [p for p in items if p.get("university_id") == university_id]
         return items[offset : offset + limit]
 
     async def count_programs(self, field=None, degree_type=None) -> int:
@@ -37,7 +39,7 @@ class FakeProgramRepository:
             items = [p for p in items if p.get("degree_type") == degree_type]
         return len(items)
 
-    async def get_stale_programs(self, staleness_days=30) -> list[dict[str, Any]]:
+    async def get_stale_programs(self, staleness_days=30) -> list[dict[str, Any]]:  # pylint: disable=unused-argument
         return []
 
     async def update_program(self, program_id: str, updates: dict[str, Any]) -> int:
