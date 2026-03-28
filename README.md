@@ -742,7 +742,7 @@ tests/
 
 **Python version**: CI uses **3.11** (`PYTHON_VERSION` in the workflow), matching **`python:3.11-slim`** in the Dockerfile so the image you push to GHCR is the same language version as lint/tests and local tooling (`pyproject.toml`, mypy, Black target).
 
-Shared lint rules live in `.pylintrc` (line length, docstring / design relaxations, similarity thresholds). **Bandit** uses root `bandit.yaml` (documented suppressions for known-safe patterns). The `if __name__ == "__main__"` dev server binds **127.0.0.1**; production still listens on **0.0.0.0** via the Dockerfile `CMD`.
+Shared lint rules live in `.pylintrc` (line length, docstring / design relaxations, similarity thresholds). **Bandit** reads root `bandit.yaml` (no global rule skips); known-safe false positives use **inline `# nosec B###`** on the specific line. The `if __name__ == "__main__"` dev server binds **127.0.0.1**; production still listens on **0.0.0.0** via the Dockerfile `CMD`.
 
 ### Pipeline Stages
 
@@ -752,9 +752,9 @@ Shared lint rules live in `.pylintrc` (line length, docstring / design relaxatio
 | **Lint** | flake8 + pylint (pip cache) |
 | **Unit Tests** | `pytest tests/unit/` + JUnit XML artifact |
 | **Type Check** | mypy after format + lint + unit tests |
-| **Tests + Coverage** | Full `pytest tests/` + HTML + Cobertura XML artifacts |
-| **Bandit** | Static scan with `bandit.yaml` (fails the job on new findings outside config) |
-| **Snyk OSS** | Dependency scan when `SNYK_TOKEN` is set; otherwise logs a skip message |
+| **Integration + coverage** | `pytest tests/integration/` only (avoids duplicating the unit-test job) + HTML + Cobertura XML artifacts |
+| **Bandit** | Static scan with `bandit.yaml`; fails on new findings (use targeted `# nosec` sparingly) |
+| **Snyk** | Dependency scan when `SNYK_TOKEN` is set; otherwise logs a skip message |
 | **Docker** | Build on every run; **push to `ghcr.io/<owner>/<repo>`** only on merge to `main` |
 | **Trivy** | Container scan on **push to `main`** only (pulls image by commit SHA from GHCR) |
 | **Summary** | Uploads `ci-reports` artifact with job outcomes |
@@ -768,8 +768,8 @@ format ───┐
 lint    ──┼──> type-check ──────┐
 unit-tests┘                     ├──> docker-build ──> Trivy (main only)
           ├──> integration-tests┤
-          ├──> security-static (Bandit)
-          └──> security-scan (Snyk)
+          ├──> security-static
+          └──> security-scan
 
 docker-build (PR: build+load only; main: push GHCR)
 
@@ -784,7 +784,8 @@ isort --check-only app/ tests/
 flake8 app/ tests/ --max-line-length=120 --extend-ignore=E203,W503,E501
 pylint app/ tests/ --max-line-length=120 --disable=C0111,R0903
 mypy app/ --ignore-missing-imports --no-strict-optional
-ALLOW_DB_FAILURE=true USE_MOCK_DATA=true X_SERVICE_TOKEN=test-service-token pytest tests/ -v
+ALLOW_DB_FAILURE=true USE_MOCK_DATA=true X_SERVICE_TOKEN=test-service-token pytest tests/unit/ -v
+ALLOW_DB_FAILURE=true USE_MOCK_DATA=true X_SERVICE_TOKEN=test-service-token pytest tests/integration/ -v
 bandit -r app/ -c bandit.yaml
 docker build -t program-discovery-agent .
 ```

@@ -1,6 +1,4 @@
-# Bandit static analysis configuration for Program Discovery Agent (see also B104 fix in app/main.py).
-# B311 — random.uniform / random.choice for crawl delays and UA pick (not cryptographic).
-# B608 — dynamic SQL fragments built from fixed column allowlists; user input bound via %s.
-skips:
-  - B311
-  - B608
+# Bandit configuration for Program Discovery Agent.
+# Keep `skips` empty; use inline `# nosec B###` on the exact flagged line when justified
+# (see crawlers + mysql repos). Re-run: bandit -r app/ -c bandit.yaml
+skips: []
