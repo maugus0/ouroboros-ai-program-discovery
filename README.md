@@ -156,7 +156,7 @@ The Program Discovery Agent is responsible for:
 
 | Tool | Version | Purpose |
 |------|---------|---------|
-| Python | 3.11+ | Runtime |
+| Python | 3.11+ | Runtime (CI, Dockerfile, and local venv should match) |
 | MySQL | 8.0+ | Database |
 | Docker | 24.0+ | Containerised deployment (optional) |
 
@@ -736,34 +736,44 @@ tests/
 
 **Workflow**: `.github/workflows/deploy.yml` (named **OuroborosAI Program Discovery CI/CD Pipeline** in GitHub)
 
-**Trigger**: Pull requests to `main` or `develop`
+**Triggers**: Pull requests to `main` / `develop` (opened, synchronize, reopened); pushes to `main`.
 
-Shared lint rules live in `.pylintrc` (line length, docstring / design relaxations, similarity thresholds).
+**Concurrency**: One run per workflow + ref; newer commits cancel in-progress runs on the same ref.
+
+**Python version**: CI uses **3.11** (`PYTHON_VERSION` in the workflow), matching **`python:3.11-slim`** in the Dockerfile so the image you push to GHCR is the same language version as lint/tests and local tooling (`pyproject.toml`, mypy, Black target).
+
+Shared lint rules live in `.pylintrc` (line length, docstring / design relaxations, similarity thresholds). **Bandit** uses root `bandit.yaml` (documented suppressions for known-safe patterns). The `if __name__ == "__main__"` dev server binds **127.0.0.1**; production still listens on **0.0.0.0** via the Dockerfile `CMD`.
 
 ### Pipeline Stages
 
 | Stage | Description |
 |-------|-------------|
-| **Format** | Black + isort validation |
-| **Lint** | flake8 + pylint |
-| **Unit Tests** | pytest with JUnit XML output |
-| **Type Check** | mypy static analysis (after format + lint) |
-| **Integration Tests** | pytest with coverage (after format + lint) |
-| **Security Audit** | Bandit static analysis (after format + lint) |
-| **Docker Build** | Verify image builds (after all above) |
-| **Summary** | Markdown table of all job results |
+| **Format** | Black + isort (pip cache) |
+| **Lint** | flake8 + pylint (pip cache) |
+| **Unit Tests** | `pytest tests/unit/` + JUnit XML artifact |
+| **Type Check** | mypy after format + lint + unit tests |
+| **Tests + Coverage** | Full `pytest tests/` + HTML + Cobertura XML artifacts |
+| **Bandit** | Static scan with `bandit.yaml` (fails the job on new findings outside config) |
+| **Snyk OSS** | Dependency scan when `SNYK_TOKEN` is set; otherwise logs a skip message |
+| **Docker** | Build on every run; **push to `ghcr.io/<owner>/<repo>`** only on merge to `main` |
+| **Trivy** | Container scan on **push to `main`** only (pulls image by commit SHA from GHCR) |
+| **Summary** | Uploads `ci-reports` artifact with job outcomes |
+
+Optional: set repository variable `ENABLE_CODE_SCANNING_SARIF` to `true` to upload Snyk/Trivy SARIF to GitHub Code Scanning (guarded for forks on PRs).
 
 ### Pipeline Graph
 
 ```
-format ──┐
-         ├──> type-check ──┐
-lint   ──┤                  │
-         ├──> integration ──┼──> build-docker ──> summary
-         │                  │
-         └──> security   ──┘
+format ───┐
+lint    ──┼──> type-check ──────┐
+unit-tests┘                     ├──> docker-build ──> Trivy (main only)
+          ├──> integration-tests┤
+          ├──> security-static (Bandit)
+          └──> security-scan (Snyk)
 
-unit-tests (independent) ──────> build-docker
+docker-build (PR: build+load only; main: push GHCR)
+
+reports-summary (always; includes skipped Trivy on PRs)
 ```
 
 ### Local CI Simulation
@@ -772,10 +782,10 @@ unit-tests (independent) ──────> build-docker
 black --check app/ tests/
 isort --check-only app/ tests/
 flake8 app/ tests/ --max-line-length=120 --extend-ignore=E203,W503,E501
-pylint app/ tests/
+pylint app/ tests/ --max-line-length=120 --disable=C0111,R0903
 mypy app/ --ignore-missing-imports --no-strict-optional
 ALLOW_DB_FAILURE=true USE_MOCK_DATA=true X_SERVICE_TOKEN=test-service-token pytest tests/ -v
-bandit -r app/ || true
+bandit -r app/ -c bandit.yaml
 docker build -t program-discovery-agent .
 ```
 
@@ -925,6 +935,7 @@ ouroboros-ai-program-discovery/
 ├── pyproject.toml
 ├── pytest.ini
 ├── .flake8
+├── bandit.yaml
 ├── .pylintrc
 ├── .env.example
 ├── Dockerfile
