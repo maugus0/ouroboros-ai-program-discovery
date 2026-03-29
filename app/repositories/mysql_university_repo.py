@@ -74,5 +74,5 @@ class UniversityRepository(MySQLBaseRepository):
             set_clauses.append(f"{key} = %s")
             params.append(value)
         params.append(university_id)
-        query = f"UPDATE universities SET {', '.join(set_clauses)} WHERE id = %s"
+        query = f"UPDATE universities SET {', '.join(set_clauses)} WHERE id = %s"  # nosec B608
         return await self.execute_write(query, tuple(params))

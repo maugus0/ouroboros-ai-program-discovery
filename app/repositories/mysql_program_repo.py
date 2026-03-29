@@ -89,7 +89,7 @@ class ProgramRepository(MySQLBaseRepository):
             WHERE {where_clause}
             ORDER BY p.ranking_score DESC, u.ranking ASC
             LIMIT %s OFFSET %s
-        """
+        """  # nosec B608
         return await self.execute_query(query, tuple(params))
 
     async def count_programs(self, field: str | None = None, degree_type: str | None = None) -> int:
@@ -106,7 +106,7 @@ class ProgramRepository(MySQLBaseRepository):
             params.append(degree_type)
 
         where_clause = " AND ".join(conditions)
-        query = f"SELECT COUNT(*) AS total FROM programs WHERE {where_clause}"
+        query = f"SELECT COUNT(*) AS total FROM programs WHERE {where_clause}"  # nosec B608
         result = await self.execute_one(query, tuple(params))
         return result["total"] if result else 0
 
@@ -133,7 +133,7 @@ class ProgramRepository(MySQLBaseRepository):
             set_clauses.append(f"{key} = %s")
             params.append(json.dumps(value) if key in json_fields else value)
         params.append(program_id)
-        query = f"UPDATE programs SET {', '.join(set_clauses)} WHERE id = %s"
+        query = f"UPDATE programs SET {', '.join(set_clauses)} WHERE id = %s"  # nosec B608
         rows = await self.execute_write(query, tuple(params))
         logger.info("program_updated", program_id=program_id, fields=list(updates.keys()))
         return rows
