@@ -11,7 +11,7 @@ from app.api import chat, crawl, health, institutions, programs
 from app.config import APP_VERSION, settings
 from app.core.logging import get_logger, setup_logging
 from app.middleware.logging_middleware import LoggingMiddleware
-from app.repositories import DatabasePoolConfig, close_pool, create_pool, run_migrations
+from app.repositories import DatabasePoolConfig, close_pool, create_pool
 from app.services import start_scheduler, stop_scheduler
 from app.utils.exceptions import ProgramDiscoveryBaseError
 
@@ -26,10 +26,9 @@ async def lifespan(_application: FastAPI):
 
     logger.info("program_discovery_agent_starting", version=APP_VERSION)
 
-    pool = None
     if not settings.ALLOW_DB_FAILURE:
         try:
-            pool = await create_pool(
+            await create_pool(
                 DatabasePoolConfig(
                     host=settings.get_db_host(),
                     port=settings.get_db_port(),
@@ -39,7 +38,6 @@ async def lifespan(_application: FastAPI):
                     pool_size=settings.DB_POOL_SIZE,
                 )
             )
-            await run_migrations(pool)
             logger.info("database_ready")
         except Exception as exc:  # pylint: disable=broad-exception-caught
             logger.error("database_connection_failed", error=str(exc))

@@ -65,8 +65,21 @@ async def close_pool() -> None:
         logger.info("database_pool_closed")
 
 
+def _strip_sql_comments(sql_content: str) -> str:
+    """Remove single-line SQL comments before splitting on semicolons."""
+    lines = []
+    for line in sql_content.split("\n"):
+        stripped = line.strip()
+        if stripped.startswith("--"):
+            continue
+        if "--" in line:
+            line = line[: line.index("--")]
+        lines.append(line)
+    return "\n".join(lines)
+
+
 async def run_migrations(pool: aiomysql.Pool) -> None:
-    """Execute all SQL migration files in sorted order."""
+    """Execute all SQL migration files in sorted order (idempotent)."""
     migrations_dir = Path(__file__).parent.parent.parent / "migrations"
 
     if not migrations_dir.exists():
@@ -83,20 +96,22 @@ async def run_migrations(pool: aiomysql.Pool) -> None:
             for migration_file in migration_files:
                 logger.info("running_migration", file=migration_file.name)
                 sql_content = migration_file.read_text(encoding="utf-8")
+                cleaned = _strip_sql_comments(sql_content)
 
-                statements = [s.strip() for s in sql_content.split(";") if s.strip()]
+                statements = [s.strip() for s in cleaned.split(";") if s.strip()]
                 for statement in statements:
-                    if statement and not statement.startswith("--"):
-                        try:
-                            await cursor.execute(statement)
-                        except Exception as exc:
-                            if "already exists" in str(exc).lower() or "duplicate" in str(exc).lower():
-                                logger.debug("migration_table_exists", file=migration_file.name)
-                            else:
-                                logger.warning(
-                                    "migration_statement_failed",
-                                    file=migration_file.name,
-                                    error=str(exc),
-                                )
+                    try:
+                        await cursor.execute(statement)
+                    except Exception as exc:
+                        error_msg = str(exc).lower()
+                        is_expected = "already exists" in error_msg or "duplicate" in error_msg
+                        if is_expected:
+                            logger.debug("migration_table_exists", file=migration_file.name)
+                        else:
+                            logger.warning(
+                                "migration_statement_failed",
+                                file=migration_file.name,
+                                error=str(exc),
+                            )
 
             logger.info("migrations_completed", count=len(migration_files))
