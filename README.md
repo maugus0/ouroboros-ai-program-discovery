@@ -67,6 +67,7 @@ The Program Discovery Agent is a critical microservice in the Ouroboros AI platf
 │  │  POST /programs/rank                        │     │
 │  │  POST /chat/ask, /chat/extract-intent      │     │
 │  │  POST /crawl/jobs, GET /crawl/jobs/{id}    │     │
+│  │  GET  /admin/llm/logs, /admin/llm/stats    │     │
 │  └─────────────────────┬───────────────────────┘     │
 │                        │                             │
 │  ┌─────────────────────▼───────────────────────┐     │
@@ -80,7 +81,7 @@ The Program Discovery Agent is a critical microservice in the Ouroboros AI platf
 │  ┌─────────────────────▼───────────────────────┐     │
 │  │  Repository Layer (Raw SQL)                 │     │
 │  │  InstitutionRepo, ProgramRepo               │     │
-│  │  InstitutionRankingRepo, CrawlJobRepo       │     │
+│  │  InstitutionRankingRepo, LLMCallLogRepo     │     │
 │  └─────────────────────────────────────────────┘     │
 └──────────────┬───────────────────────────────────────┘
                │
@@ -129,6 +130,14 @@ The Program Discovery Agent is a critical microservice in the Ouroboros AI platf
 - **Eligibility assessment** — check student fit for programs
 - **Program comparison** — side-by-side analysis
 - **Provider fallback** — OpenAI primary, Anthropic secondary
+- **Call logging** — all LLM calls logged with tokens, latency, and status
+
+### Admin & Monitoring
+
+- **LLM usage tracking** — view call logs and usage statistics
+- **Token monitoring** — track input/output tokens per provider
+- **Error tracking** — monitor failed LLM calls with error messages
+- **Latency metrics** — measure response times per model
 
 ---
 
@@ -257,6 +266,26 @@ Seeding 1504 institutions...
 Done! Seeded 1504 institutions with QS 2026 rankings.
 ```
 
+### 5b. (Optional) Enrich Institution Data
+
+The QS rankings data doesn't include city, website URL, or institution type. Use the enrichment script to fill in missing fields using LLM:
+
+```bash
+# Preview what would be updated (dry run)
+python scripts/enrich_institutions.py --dry-run --limit 10
+
+# Enrich first 50 institutions
+python scripts/enrich_institutions.py --limit 50
+
+# Enrich all institutions (may take a while)
+python scripts/enrich_institutions.py
+```
+
+The script uses OpenAI to infer:
+- **city** — from institution name
+- **website_url** — official website
+- **institution_type** — public/private/private_not_for_profit
+
 ### 6. Start the Service
 
 ```bash
@@ -358,7 +387,25 @@ The service also reads `MYSQL_*` variables for Docker/CI environments:
 | `programs`            | Academic program details (name, degree, field, tuition, deadline) |
 | `program_requirements`| GPA, test scores, language requirements per program               |
 | `crawl_jobs`          | Crawl job tracking with status and metrics                        |
-| `llm_call_logs`       | LLM API call audit trail (tokens, cost, latency)                  |
+| `llm_call_logs`       | LLM API call audit trail (tokens, latency, errors)                |
+
+### LLM Call Logs Schema
+
+```sql
+CREATE TABLE llm_call_logs (
+    id CHAR(36) PRIMARY KEY,
+    provider ENUM('openai', 'anthropic', 'other') NOT NULL,
+    model VARCHAR(64) NOT NULL,
+    purpose VARCHAR(128) NOT NULL,        -- e.g., 'program_qa', 'intent_extraction'
+    input_tokens INT NOT NULL DEFAULT 0,
+    output_tokens INT NOT NULL DEFAULT 0,
+    latency_ms INT,
+    status ENUM('success', 'error', 'timeout') NOT NULL,
+    error_message TEXT,                    -- error details if status='error'
+    metadata JSON,                         -- optional extra data
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
 
 ### Migrations
 
@@ -433,6 +480,60 @@ All endpoints (except `/health`) require internal JWT authentication via `Author
 | GET    | `/crawl/jobs/{id}`| Get crawl job status     |
 | POST   | `/crawl/trigger`  | Trigger crawl (stubbed)  |
 
+### Admin (Monitoring)
+
+| Method | Path                | Description                              |
+| ------ | ------------------- | ---------------------------------------- |
+| GET    | `/admin/llm/logs`   | Get recent LLM call logs (limit param)   |
+| GET    | `/admin/llm/stats`  | Get LLM usage stats by provider/model    |
+
+**Query Parameters:**
+
+- `/admin/llm/logs?limit=50` — Returns last N LLM calls (default: 50, max: 500)
+- `/admin/llm/stats?days=30` — Returns stats for last N days (default: 30)
+
+**Example Response (`/admin/llm/logs`):**
+
+```json
+{
+  "count": 2,
+  "logs": [
+    {
+      "id": "abc-123",
+      "provider": "openai",
+      "model": "gpt-4o-mini",
+      "purpose": "program_qa",
+      "input_tokens": 1234,
+      "output_tokens": 567,
+      "latency_ms": 1890,
+      "status": "success",
+      "error_message": null,
+      "created_at": "2026-04-21T12:34:56"
+    }
+  ]
+}
+```
+
+**Example Response (`/admin/llm/stats`):**
+
+```json
+{
+  "stats": [
+    {
+      "provider": "openai",
+      "model": "gpt-4o-mini",
+      "call_count": 150,
+      "total_input_tokens": 45000,
+      "total_output_tokens": 22000,
+      "avg_latency_ms": 1200.5,
+      "success_count": 148,
+      "error_count": 2
+    }
+  ],
+  "period_days": 30
+}
+```
+
 ---
 
 ## LLM Integration
@@ -450,6 +551,24 @@ All endpoints (except `/health`) require internal JWT authentication via `Author
 | **Intent Extraction**| Parse "find CS programs in US" → structured filters   |
 | **Eligibility Check**| Assess student fit against program requirements       |
 | **Comparison**       | Compare multiple programs side-by-side                |
+| **Institution Q&A**  | Answer questions using real QS ranking data           |
+
+### Call Logging
+
+All LLM calls are automatically logged to the `llm_call_logs` table with:
+
+| Field          | Description                                      |
+| -------------- | ------------------------------------------------ |
+| `provider`     | `openai` or `anthropic`                          |
+| `model`        | Model identifier (e.g., `gpt-4o-mini`)           |
+| `purpose`      | Call type: `program_qa`, `intent_extraction`     |
+| `input_tokens` | Number of input tokens                           |
+| `output_tokens`| Number of output tokens                          |
+| `latency_ms`   | Response time in milliseconds                    |
+| `status`       | `success`, `error`, or `timeout`                 |
+| `error_message`| Error details (if status is `error`)             |
+
+View logs via the Admin API: `GET /admin/llm/logs`
 
 ### Example: Ask About Programs
 
@@ -463,6 +582,19 @@ curl -X POST http://localhost:8002/chat/ask \
     "limit": 10
   }'
 ```
+
+### Example: Ask About Universities (Uses Real Data)
+
+```bash
+curl -X POST http://localhost:8002/chat/ask \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "question": "What are the top 50 universities in the QS World Rankings?"
+  }'
+```
+
+The system automatically detects institution/ranking queries and fetches real data from the database instead of relying on LLM general knowledge.
 
 ---
 
@@ -619,7 +751,8 @@ ouroboros-ai-program-discovery/
 │   │   ├── institutions.py         # Institution CRUD endpoints
 │   │   ├── programs.py             # Program search/ranking endpoints
 │   │   ├── chat.py                 # LLM-powered Q&A endpoints
-│   │   └── crawl.py                # Crawl job management
+│   │   ├── crawl.py                # Crawl job management
+│   │   └── admin.py                # Admin/monitoring endpoints
 │   ├── crawlers/                   # Web crawling
 │   │   ├── scrapy/
 │   │   │   └── spiders/
@@ -647,7 +780,8 @@ ouroboros-ai-program-discovery/
 │   │   ├── institution_ranking_repo.py
 │   │   ├── program_repo.py         # Program CRUD with search
 │   │   ├── program_requirement_repo.py
-│   │   └── crawl_job_repo.py
+│   │   ├── crawl_job_repo.py
+│   │   └── llm_call_log_repo.py    # LLM call logging
 │   ├── services/                   # Business logic
 │   │   ├── institution_service.py
 │   │   ├── program_service.py
@@ -665,7 +799,8 @@ ouroboros-ai-program-discovery/
 │   ├── run_migrations.py           # Create DB + run all migrations
 │   ├── generate_qs_json.py         # Parse QS Excel → JSON
 │   ├── seed_qs_rankings.py         # Seed institutions + rankings
-│   └── seed_sample_programs.py     # Seed sample programs
+│   ├── seed_sample_programs.py     # Seed sample programs
+│   └── enrich_institutions.py      # Enrich institution data via LLM
 ├── data/
 │   └── qs_world_rankings_2026.json # Generated QS data (1504 universities)
 ├── tests/
@@ -722,6 +857,44 @@ curl https://api.openai.com/v1/models \
   -H "Authorization: Bearer $OPENAI_API_KEY"
 ```
 
+### LLM Logs Not Appearing
+
+**Symptom**: `SELECT * FROM llm_call_logs` returns empty
+
+```bash
+# Run migrations to create the table
+python scripts/run_migrations.py
+
+# Verify table exists
+mysql -h localhost -P 3309 -u root -p -e "DESCRIBE llm_call_logs;" ouroboros_program_db
+
+# Make an LLM call to generate logs
+curl -X POST http://localhost:8002/chat/ask \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"question": "Tell me about MIT"}'
+
+# Check logs via API
+curl http://localhost:8002/admin/llm/logs \
+  -H "Authorization: Bearer <token>"
+```
+
+### Monitoring LLM Usage
+
+```bash
+# Get recent LLM calls
+curl "http://localhost:8002/admin/llm/logs?limit=10" \
+  -H "Authorization: Bearer <token>"
+
+# Get usage statistics
+curl "http://localhost:8002/admin/llm/stats?days=7" \
+  -H "Authorization: Bearer <token>"
+
+# Direct database query for detailed analysis
+mysql -h localhost -P 3309 -u root -p ouroboros_program_db \
+  -e "SELECT provider, model, COUNT(*) as calls, SUM(input_tokens) as tokens FROM llm_call_logs GROUP BY provider, model;"
+```
+
 ### Internal Auth Errors
 
 **Symptom**: `401 Unauthorized` on API calls
@@ -748,6 +921,26 @@ python scripts/generate_qs_json.py
 # Then seed
 python scripts/seed_qs_rankings.py
 ```
+
+### Empty Institution Columns
+
+**Symptom**: Many NULL values in `city`, `website_url`, `institution_type`
+
+The QS ranking data doesn't include these fields. Use the enrichment script:
+
+```bash
+# Preview changes first
+python scripts/enrich_institutions.py --dry-run --limit 5
+
+# Enrich a batch of institutions
+python scripts/enrich_institutions.py --limit 100
+
+# Check results
+mysql -h localhost -P 3309 -u root -p ouroboros_program_db \
+  -e "SELECT name, city, website_url, institution_type FROM institutions WHERE city IS NOT NULL LIMIT 10;"
+```
+
+**Note**: Enrichment uses OpenAI API calls, so there's a cost. Use `--limit` to control batch size.
 
 ### Import Errors
 

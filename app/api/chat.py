@@ -1,5 +1,6 @@
 """Conversational API endpoints for program Q&A."""
 
+import re
 from typing import Any
 
 from fastapi import APIRouter, Depends
@@ -8,11 +9,83 @@ from pydantic import BaseModel, Field
 from app.core.logging import get_logger
 from app.llm import LLMService
 from app.middleware import require_service_token
-from app.services import ProgramService
+from app.services import InstitutionService, ProgramService
 
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
+
+# Patterns to detect institution/ranking queries
+INSTITUTION_PATTERNS = [
+    r"\btop\s+\d+\s+(uni|univ|universit)",
+    r"\bqs\s+(world\s+)?rank",
+    r"\brand?king",
+    r"\buniversit(y|ies)\b",
+    r"\binstitution",
+    r"\bcollege",
+    r"\btop\s+\d+\s+school",
+    r"\blist\s+of\s+(uni|univ|universit|institution|school)",
+]
+
+# Patterns for program-specific queries
+PROGRAM_PATTERNS = [
+    r"\bprogram",
+    r"\bcourse",
+    r"\bdegree",
+    r"\bmaster",
+    r"\bphd\b",
+    r"\bbachelor",
+    r"\bmba\b",
+    r"\btuition",
+    r"\bdeadline",
+    r"\brequirement",
+    r"\badmission",
+]
+
+
+def _is_institution_query(question: str) -> bool:
+    """Detect if the question is primarily about institutions/rankings."""
+    q_lower = question.lower()
+    institution_match = any(re.search(p, q_lower) for p in INSTITUTION_PATTERNS)
+    program_match = any(re.search(p, q_lower) for p in PROGRAM_PATTERNS)
+    return institution_match and not program_match
+
+
+def _extract_limit_from_question(question: str) -> int:
+    """Extract numeric limit from question like 'top 100 universities'."""
+    match = re.search(r"\btop\s+(\d+)", question.lower())
+    if match:
+        return min(int(match.group(1)), 100)
+    return 20
+
+
+def _extract_country_from_question(question: str) -> str | None:
+    """Extract country from question."""
+    q_lower = question.lower()
+    countries = {
+        "singapore": "Singapore",
+        "usa": "United States",
+        "united states": "United States",
+        "uk": "United Kingdom",
+        "united kingdom": "United Kingdom",
+        "germany": "Germany",
+        "australia": "Australia",
+        "canada": "Canada",
+        "japan": "Japan",
+        "china": "China",
+        "india": "India",
+        "france": "France",
+        "switzerland": "Switzerland",
+        "netherlands": "Netherlands",
+        "sweden": "Sweden",
+        "south korea": "South Korea",
+        "korea": "South Korea",
+        "hong kong": "Hong Kong",
+    }
+    for key, value in countries.items():
+        if key in q_lower:
+            return value
+    return None
 
 
 class ProgramQuestionRequest(BaseModel):
@@ -57,6 +130,10 @@ def get_program_service() -> ProgramService:
     return ProgramService()
 
 
+def get_institution_service() -> InstitutionService:
+    return InstitutionService()
+
+
 @router.post(
     "/ask",
     response_model=ProgramQuestionResponse,
@@ -66,19 +143,58 @@ async def ask_about_programs(
     request: ProgramQuestionRequest,
     llm_service: LLMService = Depends(get_llm_service),
     program_service: ProgramService = Depends(get_program_service),
+    institution_service: InstitutionService = Depends(get_institution_service),
 ) -> ProgramQuestionResponse:
-    """Ask a question about academic programs.
+    """Ask a question about academic programs or institutions.
 
-    This endpoint uses LLM to answer natural language questions about programs,
-    considering relevant programs from the database and optional student profile.
+    This endpoint uses real database data for institution/ranking queries,
+    and LLM to answer natural language questions about programs.
     """
     logger.info("program_question_received", question=request.question[:100])
 
     programs_context = []
-    if request.filters or request.question:
+    institutions_context = []
+
+    is_inst_query = _is_institution_query(request.question)
+
+    if is_inst_query:
+        from app.models import InstitutionSearchRequest
+
+        limit = _extract_limit_from_question(request.question)
+        country = _extract_country_from_question(request.question)
+        logger.info(
+            "institution_query_detected",
+            limit=limit,
+            country=country,
+        )
+
+        inst_search = InstitutionSearchRequest(
+            query=request.filters.get("query"),
+            country=country or request.filters.get("country"),
+            institution_type=None,
+            min_rank=None,
+            max_rank=limit if "top" in request.question.lower() else None,
+            ranking_source=None,
+            ranking_year=None,
+            page=1,
+            page_size=min(limit, 100),
+        )
+        inst_result = await institution_service.search_institutions(inst_search)
+        institutions_context = [
+            {
+                "rank": inst.best_rank,
+                "name": inst.name,
+                "country": inst.country,
+                "type": inst.institution_type.value if inst.institution_type else None,
+            }
+            for inst in inst_result.items
+        ]
+        logger.info("institutions_found", count=len(institutions_context))
+
+    if not is_inst_query or request.filters:
         from app.models import ProgramSearchRequest
 
-        search_request = ProgramSearchRequest(
+        prog_search = ProgramSearchRequest(
             query=request.filters.get("query") or request.question[:50],
             field=request.filters.get("field"),
             degree_type=request.filters.get("degree_type"),
@@ -89,12 +205,13 @@ async def ask_about_programs(
             page=1,
             page_size=request.limit,
         )
-        result = await program_service.search_programs(search_request)
-        programs_context = [p.model_dump() for p in result.items]
+        prog_result = await program_service.search_programs(prog_search)
+        programs_context = [p.model_dump() for p in prog_result.items]
 
     response = await llm_service.answer_program_question(
         question=request.question,
         programs_context=programs_context,
+        institutions_context=institutions_context,
         student_profile=request.student_profile,
     )
 

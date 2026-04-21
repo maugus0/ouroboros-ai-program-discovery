@@ -7,7 +7,7 @@ from fastapi import FastAPI, Request
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 
-from app.api import chat, crawl, health, institutions, programs
+from app.api import admin, chat, crawl, health, institutions, programs
 from app.config import APP_VERSION, settings
 from app.core.logging import get_logger, setup_logging
 from app.middleware.logging_middleware import LoggingMiddleware
@@ -100,6 +100,7 @@ app.include_router(institutions.router)
 app.include_router(programs.router)
 app.include_router(crawl.router)
 app.include_router(chat.router)
+app.include_router(admin.router)
 
 
 # -- Custom OpenAPI ----------------------------------------------------
