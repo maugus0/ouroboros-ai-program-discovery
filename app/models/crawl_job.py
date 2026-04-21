@@ -19,8 +19,6 @@ class CrawlJobBase(BaseModel):
 class CrawlJobCreate(CrawlJobBase):
     """Request model for creating a crawl job."""
 
-    pass
-
 
 class CrawlJobDB(CrawlJobBase):
     """Crawl job as stored in the database."""

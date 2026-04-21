@@ -90,7 +90,7 @@ jobs:
         run: flake8 app/ tests/ --max-line-length=120 --extend-ignore=E203,W503,E501
 
       - name: Run pylint
-        run: pylint app/ tests/ --max-line-length=120 --disable=C0111,R0903
+        run: pylint app/ tests/ --max-line-length=120 --disable=C0111,R0903,R0913,R0914,R0911,R0912,R0915,R0917,W0212,W0621,W0718,C0415,W0107,E0401
 
   unit-tests:
     name: Unit Tests

@@ -31,8 +31,6 @@ class InstitutionBase(BaseModel):
 class InstitutionCreate(InstitutionBase):
     """Request model for creating an institution."""
 
-    pass
-
 
 class InstitutionUpdate(BaseModel):
     """Request model for updating an institution."""
