@@ -95,6 +95,14 @@ The Program Discovery Agent is a critical microservice in the Ouroboros AI platf
 
 ## Features
 
+### Program Data Crawling (ORB-30)
+
+- **Scrapy-based framework** with configurable selectors
+- **Sample configurations** for MIT, Stanford, Oxford
+- **Robots.txt compliance** and rate limiting
+- **Crawl job tracking** with status and metrics
+- **Stale detection** — programs marked stale after 30 days
+
 ### Program Search & Ranking (ORB-31)
 
 - **Advanced filtering** — field, degree level, location, tuition, deadlines, language
@@ -121,14 +129,6 @@ The Program Discovery Agent is a critical microservice in the Ouroboros AI platf
 - **Eligibility assessment** — check student fit for programs
 - **Program comparison** — side-by-side analysis
 - **Provider fallback** — OpenAI primary, Anthropic secondary
-
-### Program Data Crawling (ORB-18)
-
-- **Scrapy-based framework** with configurable selectors
-- **Sample configurations** for MIT, Stanford, Oxford
-- **Robots.txt compliance** and rate limiting
-- **Crawl job tracking** with status and metrics
-- **Stale detection** — programs marked stale after 30 days
 
 ---
 
@@ -199,19 +199,40 @@ docker compose logs -f mysql   # wait for "ready for connections"
 
 **Option B: Local MySQL**
 
-```bash
-mysql -u root -p -e "CREATE DATABASE ouroboros_program_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
-```
+Ensure MySQL is running. No need to create the database manually — the migration script handles it.
 
 ### 4. Run Migrations
 
-Migrations run automatically on startup, but you can verify the database schema:
+The migration script will:
+- Create the database if it doesn't exist
+- Run all SQL migrations in order (001-006)
+- Skip already-applied migrations (idempotent)
 
 ```bash
-mysql -u root -p ouroboros_program_db -e "SHOW TABLES;"
+python scripts/run_migrations.py
 ```
 
-Expected tables: `institutions`, `institution_rankings`, `programs`, `program_requirements`, `crawl_jobs`, `llm_call_logs`
+Expected output:
+
+```
+Starting migrations for database: ouroboros_program_db
+Database 'ouroboros_program_db' ready
+Found 6 migration file(s)
+Running migration: 001_create_institutions.sql
+  ✓ 001_create_institutions.sql applied
+Running migration: 002_create_institution_rankings.sql
+  ✓ 002_create_institution_rankings.sql applied
+Running migration: 003_create_programs.sql
+  ✓ 003_create_programs.sql applied
+Running migration: 004_create_program_requirements.sql
+  ✓ 004_create_program_requirements.sql applied
+Running migration: 005_create_crawl_jobs.sql
+  ✓ 005_create_crawl_jobs.sql applied
+Running migration: 006_create_llm_call_logs.sql
+  ✓ 006_create_llm_call_logs.sql applied
+All migrations completed successfully!
+Database connection closed
+```
 
 ### 5. Generate and Seed QS Rankings Data
 
@@ -341,7 +362,7 @@ The service also reads `MYSQL_*` variables for Docker/CI environments:
 
 ### Migrations
 
-Located in `migrations/` directory:
+Run migrations via `python scripts/run_migrations.py`:
 
 ```
 migrations/
@@ -353,7 +374,12 @@ migrations/
 └── 006_create_llm_call_logs.sql
 ```
 
-All migrations are **idempotent** using `CREATE TABLE IF NOT EXISTS` — safe to re-run.
+The migration script:
+- **Creates the database** if it doesn't exist
+- **Runs all .sql files** in sorted numerical order
+- **Skips already-applied** statements (idempotent — safe to re-run)
+- **Validates database name** (alphanumeric + underscore only, max 64 chars)
+- **Sets UTC timezone** for the connection session
 
 ---
 
@@ -636,6 +662,7 @@ ouroboros-ai-program-discovery/
 │   └── main.py                     # FastAPI app with lifespan
 ├── migrations/                     # SQL migration files (001-006)
 ├── scripts/
+│   ├── run_migrations.py           # Create DB + run all migrations
 │   ├── generate_qs_json.py         # Parse QS Excel → JSON
 │   ├── seed_qs_rankings.py         # Seed institutions + rankings
 │   └── seed_sample_programs.py     # Seed sample programs
