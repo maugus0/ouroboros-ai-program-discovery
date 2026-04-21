@@ -1,76 +1,117 @@
-"""Pydantic models for program search requests and responses."""
+"""Pydantic models for academic programs."""
 
 from datetime import date, datetime
-from enum import Enum
-from typing import Any, Optional
+from decimal import Decimal
+from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
-
-class DegreeType(str, Enum):
-    BACHELOR = "bachelor"
-    MASTER_COURSEWORK = "master_coursework"
-    MASTER_RESEARCH = "master_research"
-    PHD = "phd"
+from app.models.common import DegreeType, ProgramMode
 
 
-class StudentProfileSummary(BaseModel):
-    """Minimal student profile data needed for program ranking."""
+class ProgramBase(BaseModel):
+    """Base program fields."""
 
-    gpa: Optional[float] = None
-    gpa_scale: Optional[float] = Field(default=4.0)
-    prerequisites: list[str] = Field(default_factory=list)
-    research_interests: Optional[str] = None
-    target_field: Optional[str] = None
-    budget_usd: Optional[float] = None
+    program_name: str = Field(..., max_length=512)
+    degree_type: DegreeType
+    field: str = Field(..., max_length=256)
+    field_category: str | None = Field(None, max_length=128)
+    description: str | None = None
+    requirements: dict[str, Any] | None = None
+    deadline: date | None = None
+    tuition_usd: Decimal | None = Field(None, ge=0)
+    tuition_currency: str | None = Field(None, max_length=8)
+    tuition_local: Decimal | None = Field(None, ge=0)
+    duration_months: int | None = Field(None, ge=1)
+    language: str = Field("English", max_length=64)
+    mode: ProgramMode = ProgramMode.UNKNOWN
+    intake: str | None = Field(None, max_length=64)
+    source_url: str | None = Field(None, max_length=512)
+
+
+class ProgramCreate(ProgramBase):
+    """Request model for creating a program."""
+
+    institution_id: str
+
+
+class ProgramUpdate(BaseModel):
+    """Request model for updating a program."""
+
+    program_name: str | None = Field(None, max_length=512)
+    degree_type: DegreeType | None = None
+    field: str | None = Field(None, max_length=256)
+    field_category: str | None = Field(None, max_length=128)
+    description: str | None = None
+    requirements: dict[str, Any] | None = None
+    deadline: date | None = None
+    tuition_usd: Decimal | None = None
+    tuition_currency: str | None = None
+    tuition_local: Decimal | None = None
+    duration_months: int | None = None
+    language: str | None = None
+    mode: ProgramMode | None = None
+    intake: str | None = None
+    source_url: str | None = None
+    is_active: bool | None = None
+
+
+class ProgramDB(ProgramBase):
+    """Program as stored in the database."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    institution_id: str
+    crawled_at: datetime | None = None
+    is_active: bool = True
+    created_at: datetime
+    updated_at: datetime
+
+
+class ProgramResponse(ProgramDB):
+    """Program response with institution details."""
+
+    institution_name: str | None = None
+    institution_country: str | None = None
+    institution_rank: int | None = None
 
 
 class ProgramSearchRequest(BaseModel):
-    """Request body for POST /api/v1/programs/search."""
+    """Search/filter request for programs."""
 
-    field: Optional[str] = None
-    degree_type: Optional[DegreeType] = None
-    country: Optional[str] = None
-    student_profile: Optional[StudentProfileSummary] = None
-    max_results: int = Field(default=20, ge=1, le=100)
-    page: int = Field(default=1, ge=1)
-
-
-class ProgramResponse(BaseModel):
-    """Single program in search results."""
-
-    id: str
-    university_name: str
-    program_name: str
-    degree_type: str
-    field: str
-    field_category: Optional[str] = None
-    description: Optional[str] = None
-    requirements: Optional[dict[str, Any]] = None
-    deadline: Optional[date] = None
-    tuition_usd: Optional[float] = None
-    duration_years: Optional[float] = None
-    ranking_score: Optional[float] = None
-    source_url: str
-    country: Optional[str] = None
-    university_ranking: Optional[int] = None
-    crawled_at: Optional[datetime] = None
-    match_score: Optional[float] = Field(default=None, description="Weighted match score (0-100)")
+    query: str | None = Field(None, description="Search by program name or description")
+    institution_id: str | None = None
+    degree_type: DegreeType | None = None
+    field: str | None = None
+    field_category: str | None = None
+    country: str | None = None
+    min_rank: int | None = Field(None, ge=1)
+    max_rank: int | None = Field(None, ge=1)
+    max_tuition_usd: Decimal | None = Field(None, ge=0)
+    deadline_after: date | None = None
+    deadline_before: date | None = None
+    language: str | None = None
+    mode: ProgramMode | None = None
+    page: int = Field(1, ge=1)
+    page_size: int = Field(20, ge=1, le=100)
 
 
-class ProgramSearchResponse(BaseModel):
-    """Response body for program search."""
+class ProgramRankingRequest(BaseModel):
+    """Request model for ranking programs for a student."""
 
-    success: bool = True
-    data: list[ProgramResponse] = Field(default_factory=list)
-    total: int = 0
-    page: int = 1
-    page_size: int = 20
+    student_profile: dict[str, Any] = Field(..., description="Student profile data")
+    target_field: str = Field(..., description="Desired field of study")
+    target_degree: DegreeType | None = None
+    country_preferences: list[str] | None = None
+    max_tuition_usd: Decimal | None = None
+    deadline_cutoff: date | None = None
+    limit: int = Field(20, ge=1, le=100)
 
 
-class ProgramDetailResponse(BaseModel):
-    """Full program details including requirements."""
+class RankedProgram(ProgramResponse):
+    """Program with ranking score and breakdown."""
 
-    success: bool = True
-    data: Optional[ProgramResponse] = None
-    requirements: list[dict[str, Any]] = Field(default_factory=list)
+    overall_score: float = Field(..., ge=0, le=100)
+    score_breakdown: dict[str, float] = Field(default_factory=dict)
+    match_reasons: list[str] = Field(default_factory=list)

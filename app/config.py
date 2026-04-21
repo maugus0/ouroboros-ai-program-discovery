@@ -1,10 +1,11 @@
 """Application configuration loaded from environment variables."""
 
+import json
 import os
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-APP_VERSION = "0.1.0"
+APP_VERSION = "0.2.0"
 
 
 class Settings(BaseSettings):
@@ -22,31 +23,15 @@ class Settings(BaseSettings):
     DB_CONNECTION_TIMEOUT: int = 20
 
     # ========== Inter-Service Auth ==========
-    X_SERVICE_TOKEN: str = ""
-
-    # ========== LLM Configuration ==========
-    OPENAI_API_KEY: str = ""
-    OPENAI_MODEL: str = "gpt-4o-mini"
-    OPENAI_MAX_TOKENS: int = 2000
-    OPENAI_TEMPERATURE: float = 0.1
-
-    ANTHROPIC_API_KEY: str = ""
-    ANTHROPIC_MODEL: str = "claude-sonnet-4-20250514"
-    ANTHROPIC_MAX_TOKENS: int = 2000
-
-    LLM_MAX_RETRIES: int = 3
-    LLM_RETRY_DELAY: int = 2
-
-    # ========== Crawling Configuration ==========
-    SCRAPY_CONCURRENT_REQUESTS: int = 8
-    SCRAPY_DOWNLOAD_DELAY: float = 2.0
-    SCRAPY_USER_AGENT_ROTATION: bool = True
-    MIN_CRAWL_DELAY_SECONDS: int = 2
-    MAX_CRAWL_DELAY_SECONDS: int = 5
-    RESPECT_ROBOTS_TXT: bool = True
-
-    PROGRAM_STALENESS_DAYS: int = 30
-    BATCH_CRAWL_CRON: str = "0 2 * * 0"
+    INTERNAL_TOKEN_VERIFY_ENABLED: bool = False
+    INTERNAL_TOKEN_SIGNING_ALGORITHM: str = "RS256"
+    INTERNAL_TOKEN_PUBLIC_KEY: str = ""
+    INTERNAL_TOKEN_PUBLIC_KEYS: str = "{}"
+    INTERNAL_TOKEN_JWKS_URL: str = ""
+    INTERNAL_TOKEN_JWKS_REFRESH_SECONDS: int = 60
+    INTERNAL_TOKEN_JWKS_TIMEOUT_SECONDS: int = 2
+    INTERNAL_TOKEN_AUDIENCE: str = "ouroboros.program-discovery"
+    INTERNAL_TOKEN_ISSUER: str = "ouroboros-orchestrator-internal"
 
     # ========== Ranking Weights (must sum to 100) ==========
     RANKING_WEIGHT_FIELD_RELEVANCE: int = 40
@@ -57,6 +42,8 @@ class Settings(BaseSettings):
 
     # ========== Application ==========
     LOG_LEVEL: str = "INFO"
+    UVICORN_HOST: str = "127.0.0.1"
+    UVICORN_PORT: int = 8002
     USE_MOCK_DATA: bool = True
     ALLOW_DB_FAILURE: bool = False
 
@@ -90,6 +77,16 @@ class Settings(BaseSettings):
             "deadline_proximity": self.RANKING_WEIGHT_DEADLINE_PROXIMITY,
             "tuition_affordability": self.RANKING_WEIGHT_TUITION_AFFORDABILITY,
         }
+
+    def get_internal_token_public_keys(self) -> dict[str, str]:
+        """Parse INTERNAL_TOKEN_PUBLIC_KEYS JSON string into a kid->PEM dict."""
+        try:
+            parsed = json.loads(self.INTERNAL_TOKEN_PUBLIC_KEYS)
+            if isinstance(parsed, dict):
+                return {str(key): str(value) for key, value in parsed.items()}
+        except (json.JSONDecodeError, TypeError):
+            pass
+        return {}
 
 
 settings = Settings()

@@ -1,88 +1,150 @@
-"""Program search and retrieval endpoints."""
+"""Program API endpoints."""
 
-from fastapi import APIRouter, Depends
+from datetime import date
+from decimal import Decimal
 
-from app.middleware.service_auth import require_service_token
-from app.models.program import (
-    ProgramDetailResponse,
+from fastapi import APIRouter, Depends, Query
+
+from app.core.logging import get_logger
+from app.middleware import require_service_token
+from app.models import (
+    DegreeType,
+    PaginatedResponse,
+    ProgramMode,
+    ProgramRankingRequest,
     ProgramResponse,
     ProgramSearchRequest,
-    ProgramSearchResponse,
+    RankedProgram,
 )
-from app.services.program_service import ProgramService
-from app.utils.exceptions import NotFoundError
+from app.services import ProgramService, RankingService
 
-router = APIRouter(prefix="/api/v1/programs", tags=["Programs"], dependencies=[Depends(require_service_token)])
+logger = get_logger(__name__)
+
+router = APIRouter(prefix="/programs", tags=["Programs"])
 
 
-@router.post("/search", response_model=ProgramSearchResponse)
-async def search_programs(request: ProgramSearchRequest):
-    """Search and rank programs based on filters and student profile."""
-    service = ProgramService()
-    result = await service.search_and_rank(request)
+def get_program_service() -> ProgramService:
+    return ProgramService()
 
-    programs = [
-        ProgramResponse(
-            id=p["id"],
-            university_name=p.get("university_name", "Unknown"),
-            program_name=p["program_name"],
-            degree_type=p["degree_type"],
-            field=p["field"],
-            field_category=p.get("field_category"),
-            description=p.get("description"),
-            requirements=p.get("requirements"),
-            deadline=p.get("deadline"),
-            tuition_usd=p.get("tuition_usd"),
-            duration_years=p.get("duration_years"),
-            ranking_score=p.get("ranking_score"),
-            source_url=p["source_url"],
-            country=p.get("country"),
-            university_ranking=p.get("university_ranking"),
-            crawled_at=p.get("crawled_at"),
-            match_score=p.get("match_score"),
-        )
-        for p in result["programs"]
-    ]
 
-    return ProgramSearchResponse(
-        success=True,
-        data=programs,
-        total=result["total"],
-        page=result["page"],
-        page_size=result["page_size"],
+def get_ranking_service() -> RankingService:
+    return RankingService()
+
+
+@router.get(
+    "",
+    response_model=PaginatedResponse[ProgramResponse],
+    dependencies=[Depends(require_service_token)],
+)
+async def search_programs(
+    query: str | None = Query(None, description="Search by program name or description"),
+    institution_id: str | None = Query(None, description="Filter by institution"),
+    degree_type: DegreeType | None = Query(None, description="Filter by degree type"),
+    field: str | None = Query(None, description="Filter by field of study"),
+    field_category: str | None = Query(None, description="Filter by field category"),
+    country: str | None = Query(None, description="Filter by country"),
+    min_rank: int | None = Query(None, ge=1, description="Min university rank"),
+    max_rank: int | None = Query(None, ge=1, description="Max university rank"),
+    max_tuition_usd: Decimal | None = Query(None, ge=0, description="Max tuition in USD"),
+    deadline_after: date | None = Query(None, description="Deadline after date"),
+    deadline_before: date | None = Query(None, description="Deadline before date"),
+    language: str | None = Query(None, description="Filter by language"),
+    mode: ProgramMode | None = Query(None, description="Filter by mode"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    service: ProgramService = Depends(get_program_service),
+) -> PaginatedResponse[ProgramResponse]:
+    """Search programs with filters and pagination."""
+    request = ProgramSearchRequest(
+        query=query,
+        institution_id=institution_id,
+        degree_type=degree_type,
+        field=field,
+        field_category=field_category,
+        country=country,
+        min_rank=min_rank,
+        max_rank=max_rank,
+        max_tuition_usd=max_tuition_usd,
+        deadline_after=deadline_after,
+        deadline_before=deadline_before,
+        language=language,
+        mode=mode,
+        page=page,
+        page_size=page_size,
     )
+    return await service.search_programs(request)
 
 
-@router.get("/{program_id}", response_model=ProgramDetailResponse)
-async def get_program(program_id: str):
-    """Get full program details including requirements."""
-    service = ProgramService()
-    program = await service.get_program_detail(program_id)
+@router.get(
+    "/fields",
+    response_model=list[str],
+    dependencies=[Depends(require_service_token)],
+)
+async def get_fields(
+    service: ProgramService = Depends(get_program_service),
+) -> list[str]:
+    """Get list of all unique fields."""
+    return await service.get_all_fields()
 
-    if not program:
-        raise NotFoundError("Program")
 
-    response_data = ProgramResponse(
-        id=program["id"],
-        university_name=program.get("university_name", "Unknown"),
-        program_name=program["program_name"],
-        degree_type=program["degree_type"],
-        field=program["field"],
-        field_category=program.get("field_category"),
-        description=program.get("description"),
-        requirements=program.get("requirements"),
-        deadline=program.get("deadline"),
-        tuition_usd=program.get("tuition_usd"),
-        duration_years=program.get("duration_years"),
-        ranking_score=program.get("ranking_score"),
-        source_url=program["source_url"],
-        country=program.get("country"),
-        university_ranking=program.get("university_ranking"),
-        crawled_at=program.get("crawled_at"),
-    )
+@router.get(
+    "/field-categories",
+    response_model=list[str],
+    dependencies=[Depends(require_service_token)],
+)
+async def get_field_categories(
+    service: ProgramService = Depends(get_program_service),
+) -> list[str]:
+    """Get list of all unique field categories."""
+    return await service.get_all_field_categories()
 
-    return ProgramDetailResponse(
-        success=True,
-        data=response_data,
-        requirements=program.get("requirements_list", []),
-    )
+
+@router.get(
+    "/count",
+    response_model=dict,
+    dependencies=[Depends(require_service_token)],
+)
+async def get_program_count(
+    service: ProgramService = Depends(get_program_service),
+) -> dict:
+    """Get total count of active programs."""
+    count = await service.get_program_count()
+    return {"count": count}
+
+
+@router.post(
+    "/rank",
+    response_model=list[RankedProgram],
+    dependencies=[Depends(require_service_token)],
+)
+async def rank_programs(
+    request: ProgramRankingRequest,
+    service: RankingService = Depends(get_ranking_service),
+) -> list[RankedProgram]:
+    """Rank programs based on student profile and preferences."""
+    return await service.rank_programs(request)
+
+
+@router.get(
+    "/{program_id}",
+    response_model=ProgramResponse,
+    dependencies=[Depends(require_service_token)],
+)
+async def get_program(
+    program_id: str,
+    service: ProgramService = Depends(get_program_service),
+) -> ProgramResponse:
+    """Get a program by ID with institution details."""
+    return await service.get_program(program_id)
+
+
+@router.get(
+    "/{program_id}/requirements",
+    dependencies=[Depends(require_service_token)],
+)
+async def get_program_requirements(
+    program_id: str,
+    service: ProgramService = Depends(get_program_service),
+):
+    """Get all requirements for a program."""
+    return await service.get_program_requirements(program_id)

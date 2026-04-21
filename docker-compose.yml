@@ -26,13 +26,17 @@ services:
     ports:
       - "8002:8002"
     environment:
-      - DB_HOST=mysql
-      - DB_PORT=3306
-      - DB_NAME=${DB_NAME:-ouroboros_program_db}
-      - DB_USERNAME=root
-      - DB_PASSWORD=${DB_PASSWORD:-root_password}
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_DATABASE=${DB_NAME:-ouroboros_program_db}
+      - MYSQL_USER=root
+      - MYSQL_PASSWORD=${DB_PASSWORD:-root_password}
       - ALLOW_DB_FAILURE=false
-      - X_SERVICE_TOKEN=${X_SERVICE_TOKEN:-dev-service-token}
+      - INTERNAL_TOKEN_VERIFY_ENABLED=${INTERNAL_TOKEN_VERIFY_ENABLED:-false}
+      - INTERNAL_TOKEN_SIGNING_ALGORITHM=${INTERNAL_TOKEN_SIGNING_ALGORITHM:-RS256}
+      - INTERNAL_TOKEN_JWKS_URL=${INTERNAL_TOKEN_JWKS_URL:-}
+      - INTERNAL_TOKEN_AUDIENCE=${INTERNAL_TOKEN_AUDIENCE:-ouroboros.program-discovery}
+      - INTERNAL_TOKEN_ISSUER=${INTERNAL_TOKEN_ISSUER:-ouroboros-orchestrator-internal}
       - LOG_LEVEL=DEBUG
     volumes:
       - .:/app

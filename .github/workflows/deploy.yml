@@ -115,7 +115,7 @@ jobs:
         env:
           ALLOW_DB_FAILURE: "true"
           USE_MOCK_DATA: "true"
-          X_SERVICE_TOKEN: "test-service-token"
+          INTERNAL_TOKEN_VERIFY_ENABLED: "false"
           MYSQL_HOST: "localhost"
           MYSQL_DATABASE: "test_db"
           MYSQL_USER: "test_user"
@@ -181,7 +181,7 @@ jobs:
         env:
           ALLOW_DB_FAILURE: "true"
           USE_MOCK_DATA: "true"
-          X_SERVICE_TOKEN: "test-service-token"
+          INTERNAL_TOKEN_VERIFY_ENABLED: "false"
           MYSQL_HOST: "localhost"
           MYSQL_DATABASE: "test_db"
           MYSQL_USER: "test_user"

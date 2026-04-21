@@ -1,67 +1,116 @@
-"""Pytest configuration and shared fixtures."""
+"""Shared pytest fixtures for Program Discovery Agent tests."""
 
-import os
+from datetime import date, datetime
+from decimal import Decimal
 
 import pytest
 
-os.environ.setdefault("ALLOW_DB_FAILURE", "true")
-os.environ.setdefault("USE_MOCK_DATA", "true")
-os.environ.setdefault("X_SERVICE_TOKEN", "test-service-token")
-
-from app.config import settings  # noqa: E402  # pylint: disable=wrong-import-position
-from app.models.program import StudentProfileSummary  # noqa: E402  # pylint: disable=wrong-import-position
-
-
-@pytest.fixture
-def mock_settings():
-    return {
-        "DB_HOST": "localhost",
-        "DB_NAME": "test_db",
-        "USE_MOCK_DATA": True,
-        "ALLOW_DB_FAILURE": True,
-        "X_SERVICE_TOKEN": settings.X_SERVICE_TOKEN,
-    }
+from app.models import (
+    DegreeType,
+    InstitutionDB,
+    InstitutionFocus,
+    InstitutionRankingDB,
+    InstitutionSize,
+    InstitutionStatus,
+    InstitutionType,
+    ProgramDB,
+    ProgramMode,
+    ProgramResponse,
+    RankingSource,
+    ResearchOutput,
+)
 
 
 @pytest.fixture
-def service_token_header():
-    """Header value always matches ``settings.X_SERVICE_TOKEN`` (local + CI)."""
-    return {"X-Service-Token": settings.X_SERVICE_TOKEN}
-
-
-@pytest.fixture
-def sample_program():
-    """A sample program dict for testing."""
-    return {
-        "id": "test-program-001",
-        "university_id": "test-uni-001",
-        "university_name": "MIT",
-        "program_name": "MSc Computer Science",
-        "degree_type": "master_research",
-        "field": "Computer Science",
-        "field_category": "STEM",
-        "description": "A rigorous master's program in CS with a focus on AI and systems.",
-        "requirements": {"min_gpa": 3.5, "prerequisites": ["Calculus", "Linear Algebra", "Data Structures"]},
-        "deadline": "2026-12-15",
-        "tuition_usd": 55000.00,
-        "duration_years": 2.0,
-        "ranking_score": 95.0,
-        "source_url": "https://www.mit.edu/cs/ms",
-        "country": "United States",
-        "university_ranking": 1,
-        "crawled_at": "2026-03-15T10:00:00",
-        "is_active": True,
-    }
-
-
-@pytest.fixture
-def sample_student_profile():
-    """A sample student profile for ranking tests."""
-    return StudentProfileSummary(
-        gpa=3.8,
-        gpa_scale=4.0,
-        prerequisites=["Calculus", "Linear Algebra", "Data Structures", "Algorithms"],
-        research_interests="machine learning, artificial intelligence",
-        target_field="Computer Science",
-        budget_usd=60000.0,
+def sample_institution() -> InstitutionDB:
+    """Create a sample institution for testing."""
+    return InstitutionDB(
+        id="inst-001",
+        name="Massachusetts Institute of Technology (MIT)",
+        slug="massachusetts-institute-of-technology-mit-united-states",
+        country="United States",
+        city="Cambridge",
+        region="Massachusetts",
+        website_url="https://www.mit.edu",
+        logo_url=None,
+        institution_type=InstitutionType.PRIVATE,
+        size=InstitutionSize.LARGE,
+        focus=InstitutionFocus.FULL_COMPREHENSIVE,
+        research_output=ResearchOutput.VERY_HIGH,
+        status=InstitutionStatus.VERIFIED,
+        is_active=True,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow(),
     )
+
+
+@pytest.fixture
+def sample_ranking() -> InstitutionRankingDB:
+    """Create a sample ranking for testing."""
+    return InstitutionRankingDB(
+        id="rank-001",
+        institution_id="inst-001",
+        ranking_source=RankingSource.QS_WORLD,
+        ranking_year=2026,
+        rank_display="1",
+        rank_position=1,
+        previous_rank_display="1",
+        overall_score=Decimal("100.0"),
+        source_url="https://www.topuniversities.com",
+        raw_metadata={"academic_reputation": 100.0},
+        crawled_at=datetime.utcnow(),
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow(),
+    )
+
+
+@pytest.fixture
+def sample_program() -> ProgramDB:
+    """Create a sample program for testing."""
+    return ProgramDB(
+        id="prog-001",
+        institution_id="inst-001",
+        program_name="Master of Science in Computer Science",
+        degree_type=DegreeType.MASTERS,
+        field="Computer Science",
+        field_category="Engineering & Technology",
+        description="A comprehensive graduate program in computer science.",
+        requirements={"gpa": "3.5", "toefl": "100"},
+        deadline=date(2026, 12, 15),
+        tuition_usd=Decimal("58000"),
+        tuition_currency="USD",
+        tuition_local=None,
+        duration_months=24,
+        language="English",
+        mode=ProgramMode.ON_CAMPUS,
+        intake="Fall",
+        source_url="https://www.eecs.mit.edu",
+        crawled_at=datetime.utcnow(),
+        is_active=True,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow(),
+    )
+
+
+@pytest.fixture
+def sample_program_response(sample_program: ProgramDB) -> ProgramResponse:
+    """Create a sample program response with institution details."""
+    return ProgramResponse(
+        **sample_program.model_dump(),
+        institution_name="Massachusetts Institute of Technology (MIT)",
+        institution_country="United States",
+        institution_rank=1,
+    )
+
+
+@pytest.fixture
+def sample_student_profile() -> dict:
+    """Create a sample student profile for testing."""
+    return {
+        "gpa": 3.8,
+        "toefl": 110,
+        "gre": 325,
+        "field_of_interest": "Computer Science",
+        "degree_seeking": "Masters",
+        "work_experience_years": 2,
+    }

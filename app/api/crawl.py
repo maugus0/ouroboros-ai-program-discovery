@@ -1,69 +1,70 @@
-"""Crawl trigger and status endpoints."""
+"""Crawl job API endpoints (stubbed for MVP)."""
 
-from fastapi import APIRouter, BackgroundTasks, Depends
+from fastapi import APIRouter, Depends
 
-from app.middleware.service_auth import require_service_token
-from app.models.crawl import (
-    CrawlJobResponse,
-    CrawlListResponse,
-    CrawlRequest,
-    CrawlStatusResponse,
-    CrawlTriggerResponse,
+from app.core.logging import get_logger
+from app.middleware import require_service_token
+from app.models import CrawlJobCreate, CrawlJobDB, CrawlJobResponse, SuccessResponse
+from app.repositories import CrawlJobRepository
+
+logger = get_logger(__name__)
+
+router = APIRouter(prefix="/crawl", tags=["Crawl"])
+
+
+def get_crawl_repo() -> CrawlJobRepository:
+    return CrawlJobRepository()
+
+
+@router.post(
+    "/jobs",
+    response_model=CrawlJobResponse,
+    dependencies=[Depends(require_service_token)],
 )
-from app.services.crawl_service import CrawlService
-from app.utils.exceptions import NotFoundError, ValidationError
-
-router = APIRouter(prefix="/api/v1/programs", tags=["Crawl"], dependencies=[Depends(require_service_token)])
-
-
-@router.post("/crawl", response_model=CrawlTriggerResponse)
-async def trigger_crawl(request: CrawlRequest, background_tasks: BackgroundTasks):
-    """Trigger a new crawl job (on-demand or batch)."""
-    if request.job_type == "on_demand" and not request.target_url and not request.target_university_id:
-        raise ValidationError("On-demand crawl requires target_url or target_university_id")
-
-    service = CrawlService()
-    job_id = await service.create_job(
-        {
-            "job_type": request.job_type.value,
-            "target_url": request.target_url,
-            "target_university_id": request.target_university_id,
-        }
-    )
-
-    if request.target_url:
-        background_tasks.add_task(service.execute_on_demand_crawl, job_id, request.target_url)
-    elif request.target_university_id:
-        background_tasks.add_task(service.execute_university_crawl, job_id, request.target_university_id)
-
-    job = await service.get_job_status(job_id)
-    job_response = (
-        CrawlJobResponse(**job) if job else CrawlJobResponse(id=job_id, job_type=request.job_type, status="pending")
-    )
-
-    return CrawlTriggerResponse(success=True, data=job_response, message="Crawl job created")
+async def create_crawl_job(
+    data: CrawlJobCreate,
+    repo: CrawlJobRepository = Depends(get_crawl_repo),
+) -> CrawlJobDB:
+    """Create a new crawl job (stubbed - jobs won't actually run in MVP)."""
+    logger.info("crawl_job_created_stub", job_type=data.job_type.value)
+    return await repo.create(data)
 
 
-@router.get("/crawl/{job_id}", response_model=CrawlStatusResponse)
-async def get_crawl_status(job_id: str):
-    """Get the current status of a crawl job."""
-    service = CrawlService()
-    job = await service.get_job_status(job_id)
+@router.get(
+    "/jobs",
+    response_model=list[CrawlJobResponse],
+    dependencies=[Depends(require_service_token)],
+)
+async def get_recent_jobs(
+    limit: int = 20,
+    repo: CrawlJobRepository = Depends(get_crawl_repo),
+) -> list[CrawlJobDB]:
+    """Get recent crawl jobs."""
+    return await repo.get_recent(limit)
 
-    if not job:
-        raise NotFoundError("Crawl job")
 
-    return CrawlStatusResponse(success=True, data=CrawlJobResponse(**job))
+@router.get(
+    "/jobs/{job_id}",
+    response_model=CrawlJobResponse,
+    dependencies=[Depends(require_service_token)],
+)
+async def get_job(
+    job_id: str,
+    repo: CrawlJobRepository = Depends(get_crawl_repo),
+) -> CrawlJobDB:
+    """Get a crawl job by ID."""
+    return await repo.get_by_id(job_id)
 
 
-@router.get("/crawl", response_model=CrawlListResponse)
-async def list_crawl_jobs(limit: int = 20, offset: int = 0, status: str | None = None):
-    """List crawl jobs with optional status filter."""
-    service = CrawlService()
-    jobs = await service.list_jobs(limit=limit, offset=offset, status=status)
-
-    return CrawlListResponse(
+@router.post(
+    "/trigger",
+    response_model=SuccessResponse,
+    dependencies=[Depends(require_service_token)],
+)
+async def trigger_crawl() -> SuccessResponse:
+    """Trigger a crawl (stubbed for MVP - no actual crawling)."""
+    logger.info("crawl_trigger_stub", message="Crawling disabled in MVP")
+    return SuccessResponse(
         success=True,
-        data=[CrawlJobResponse(**j) for j in jobs],
-        total=len(jobs),
+        message="Crawl trigger received (no-op in MVP mode)",
     )

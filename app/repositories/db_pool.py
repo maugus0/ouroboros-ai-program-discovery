@@ -4,6 +4,7 @@ Raw SQL queries — no ORM.
 """
 
 from dataclasses import dataclass
+from pathlib import Path
 
 import aiomysql
 
@@ -62,3 +63,40 @@ async def close_pool() -> None:
         await _pool.wait_closed()
         _pool = None
         logger.info("database_pool_closed")
+
+
+async def run_migrations(pool: aiomysql.Pool) -> None:
+    """Execute all SQL migration files in sorted order."""
+    migrations_dir = Path(__file__).parent.parent.parent / "migrations"
+
+    if not migrations_dir.exists():
+        logger.warning("migrations_directory_not_found", path=str(migrations_dir))
+        return
+
+    migration_files = sorted(migrations_dir.glob("*.sql"))
+    if not migration_files:
+        logger.info("no_migrations_found")
+        return
+
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            for migration_file in migration_files:
+                logger.info("running_migration", file=migration_file.name)
+                sql_content = migration_file.read_text(encoding="utf-8")
+
+                statements = [s.strip() for s in sql_content.split(";") if s.strip()]
+                for statement in statements:
+                    if statement and not statement.startswith("--"):
+                        try:
+                            await cursor.execute(statement)
+                        except Exception as exc:
+                            if "already exists" in str(exc).lower() or "duplicate" in str(exc).lower():
+                                logger.debug("migration_table_exists", file=migration_file.name)
+                            else:
+                                logger.warning(
+                                    "migration_statement_failed",
+                                    file=migration_file.name,
+                                    error=str(exc),
+                                )
+
+            logger.info("migrations_completed", count=len(migration_files))
