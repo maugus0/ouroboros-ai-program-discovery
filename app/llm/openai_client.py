@@ -32,8 +32,21 @@ async def call_openai(
     model: str | None = None,
     max_tokens: int | None = None,
     temperature: float | None = None,
+    json_mode: bool = True,
 ) -> dict:
-    """Send a chat completion request to OpenAI and return the parsed JSON response."""
+    """Send a chat completion request to OpenAI and return the parsed response.
+
+    Args:
+        system_prompt: The system instruction for the model.
+        user_content: The user's query or content.
+        model: Override the default model.
+        max_tokens: Override the default max tokens.
+        temperature: Override the default temperature.
+        json_mode: If True, request JSON response format.
+
+    Returns:
+        Dictionary with content, model, provider, and token usage.
+    """
     client = get_openai_client()
     model = model or settings.OPENAI_MODEL
     max_tokens = max_tokens or settings.OPENAI_MAX_TOKENS
@@ -41,16 +54,19 @@ async def call_openai(
 
     logger.info("openai_call_started", model=model)
 
-    response = await client.chat.completions.create(
-        model=model,
-        messages=[
+    kwargs: dict = {
+        "model": model,
+        "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_content},
         ],
-        max_tokens=max_tokens,
-        temperature=temperature,
-        response_format={"type": "json_object"},
-    )
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+    }
+    if json_mode:
+        kwargs["response_format"] = {"type": "json_object"}
+
+    response = await client.chat.completions.create(**kwargs)
 
     raw = response.choices[0].message.content
     if raw is None:
@@ -64,8 +80,9 @@ async def call_openai(
         output_tokens=usage.completion_tokens if usage else None,
     )
 
+    content = json.loads(raw) if json_mode else raw
     return {
-        "content": json.loads(raw),
+        "content": content,
         "model": model,
         "provider": "openai",
         "input_tokens": usage.prompt_tokens if usage else None,

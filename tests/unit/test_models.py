@@ -1,80 +1,104 @@
-"""Tests for Pydantic models."""
+"""Unit tests for Pydantic models."""
 
-from app.models.crawl import CrawlRequest, JobType
-from app.models.program import DegreeType, ProgramSearchRequest, StudentProfileSummary
-from app.models.ranking import RankingBreakdown, RankingWeights
+from decimal import Decimal
 
-
-def test_program_search_request_defaults():
-    req = ProgramSearchRequest()
-    assert req.max_results == 20
-    assert req.page == 1
-    assert req.field is None
-    assert req.degree_type is None
-
-
-def test_program_search_request_with_values():
-    req = ProgramSearchRequest(
-        field="Computer Science",
-        degree_type=DegreeType.MASTER_RESEARCH,
-        max_results=10,
-    )
-    assert req.field == "Computer Science"
-    assert req.degree_type == DegreeType.MASTER_RESEARCH
-    assert req.max_results == 10
+from app.models import (
+    DegreeType,
+    InstitutionCreate,
+    InstitutionSearchRequest,
+    InstitutionType,
+    ProgramCreate,
+    ProgramRankingRequest,
+    ProgramSearchRequest,
+    RankingSource,
+)
 
 
-def test_student_profile_summary():
-    profile = StudentProfileSummary(
-        gpa=3.8,
-        prerequisites=["Calculus", "Linear Algebra"],
-        target_field="AI",
-    )
-    assert profile.gpa == 3.8
-    assert len(profile.prerequisites) == 2
-    assert profile.gpa_scale == 4.0
+class TestInstitutionModels:
+    """Tests for institution models."""
+
+    def test_institution_create(self):
+        """Test creating an institution."""
+        data = InstitutionCreate(
+            name="Test University",
+            country="United States",
+            city="New York",
+        )
+        assert data.name == "Test University"
+        assert data.country == "United States"
+        assert data.institution_type == InstitutionType.UNKNOWN
+
+    def test_institution_search_request_defaults(self):
+        """Test search request default values."""
+        request = InstitutionSearchRequest()
+        assert request.page == 1
+        assert request.page_size == 20
+        assert request.query is None
+
+    def test_institution_search_request_with_filters(self):
+        """Test search request with filters."""
+        request = InstitutionSearchRequest(
+            query="MIT",
+            country="United States",
+            min_rank=1,
+            max_rank=100,
+            page=2,
+            page_size=50,
+        )
+        assert request.query == "MIT"
+        assert request.country == "United States"
+        assert request.min_rank == 1
+        assert request.max_rank == 100
 
 
-def test_crawl_request_on_demand():
-    req = CrawlRequest(
-        job_type=JobType.ON_DEMAND,
-        target_url="https://mit.edu/cs",
-    )
-    assert req.job_type == JobType.ON_DEMAND
-    assert req.target_url == "https://mit.edu/cs"
+class TestProgramModels:
+    """Tests for program models."""
+
+    def test_program_create(self):
+        """Test creating a program."""
+        data = ProgramCreate(
+            institution_id="inst-001",
+            program_name="MSc Computer Science",
+            degree_type=DegreeType.MASTERS,
+            field="Computer Science",
+        )
+        assert data.program_name == "MSc Computer Science"
+        assert data.degree_type == DegreeType.MASTERS
+
+    def test_program_search_request_defaults(self):
+        """Test program search request defaults."""
+        request = ProgramSearchRequest()
+        assert request.page == 1
+        assert request.page_size == 20
+
+    def test_program_ranking_request(self):
+        """Test program ranking request."""
+        request = ProgramRankingRequest(
+            student_profile={"gpa": 3.5},
+            target_field="Computer Science",
+            target_degree=DegreeType.MASTERS,
+            max_tuition_usd=Decimal("60000"),
+            limit=10,
+        )
+        assert request.target_field == "Computer Science"
+        assert request.limit == 10
 
 
-def test_crawl_request_batch():
-    req = CrawlRequest(job_type=JobType.BATCH)
-    assert req.job_type == JobType.BATCH
-    assert req.target_url is None
+class TestEnums:
+    """Tests for enum values."""
 
+    def test_degree_types(self):
+        """Test degree type enum values."""
+        assert DegreeType.BACHELORS.value == "bachelors"
+        assert DegreeType.MASTERS.value == "masters"
+        assert DegreeType.PHD.value == "phd"
 
-def test_ranking_weights():
-    weights = RankingWeights()
-    total = (
-        weights.field_relevance
-        + weights.requirement_match
-        + weights.university_ranking
-        + weights.deadline_proximity
-        + weights.tuition_affordability
-    )
-    assert total == 100
+    def test_ranking_sources(self):
+        """Test ranking source enum values."""
+        assert RankingSource.QS_WORLD.value == "qs_world"
+        assert RankingSource.TIMES_HIGHER.value == "times_higher"
 
-
-def test_ranking_breakdown():
-    breakdown = RankingBreakdown(
-        field_relevance_score=80.0,
-        requirement_match_score=70.0,
-        university_ranking_score=90.0,
-        deadline_proximity_score=50.0,
-        tuition_affordability_score=60.0,
-        total_score=72.5,
-    )
-    assert breakdown.total_score == 72.5
-
-
-def test_degree_type_enum():
-    assert DegreeType.BACHELOR == "bachelor"
-    assert DegreeType.MASTER_RESEARCH == "master_research"
-    assert DegreeType.PHD == "phd"
+    def test_institution_types(self):
+        """Test institution type enum values."""
+        assert InstitutionType.PUBLIC.value == "public"
+        assert InstitutionType.PRIVATE.value == "private"

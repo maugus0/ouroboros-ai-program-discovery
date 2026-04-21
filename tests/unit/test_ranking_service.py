@@ -1,128 +1,116 @@
-"""Tests for the weighted ranking service."""
+"""Unit tests for the ranking service."""
 
-# Exercises small scoring helpers that are intentionally private.
+from datetime import date
+from decimal import Decimal
 
-# pylint: disable=protected-access
+import pytest
 
-from app.models.program import StudentProfileSummary
 from app.services.ranking_service import RankingService
 
 
-def test_ranking_with_profile(sample_program, sample_student_profile):
-    """Programs should receive a score when a student profile is provided."""
-    service = RankingService()
-    ranked = service.rank_programs([sample_program], sample_student_profile)
+class TestRankingService:
+    """Tests for the ranking service."""
 
-    assert len(ranked) == 1
-    assert "match_score" in ranked[0]
-    assert ranked[0]["match_score"] > 0
+    @pytest.fixture
+    def ranking_service(self):
+        """Create a ranking service instance."""
+        return RankingService()
 
+    def test_normalize_rank_top_1(self, ranking_service):
+        """Test rank normalization for #1 ranking."""
+        score = ranking_service._normalize_rank(1)
+        assert score == 100.0
 
-def test_ranking_without_profile(sample_program):
-    """Programs should still be scored (with defaults) without a profile."""
-    service = RankingService()
-    ranked = service.rank_programs([sample_program], None)
+    def test_normalize_rank_top_10(self, ranking_service):
+        """Test rank normalization for top 10."""
+        score = ranking_service._normalize_rank(5)
+        assert score >= 95.0
 
-    assert len(ranked) == 1
-    assert "match_score" in ranked[0]
-    assert ranked[0]["match_score"] >= 0
+    def test_normalize_rank_top_50(self, ranking_service):
+        """Test rank normalization for top 50."""
+        score = ranking_service._normalize_rank(25)
+        assert 85.0 <= score <= 95.0
 
+    def test_normalize_rank_top_100(self, ranking_service):
+        """Test rank normalization for top 100."""
+        score = ranking_service._normalize_rank(75)
+        assert 75.0 <= score <= 85.0
 
-def test_ranking_sorts_descending():
-    """Programs should be sorted by match_score in descending order."""
-    service = RankingService()
-    programs = [
-        {
-            "id": "1",
-            "program_name": "Low Score Program",
-            "field": "Art History",
-            "university_ranking": 400,
-            "requirements": {},
-            "deadline": None,
-            "tuition_usd": 80000,
-        },
-        {
-            "id": "2",
-            "program_name": "High Score Program",
-            "field": "Computer Science",
-            "university_ranking": 1,
-            "requirements": {},
-            "deadline": "2027-06-01",
-            "tuition_usd": 10000,
-        },
-    ]
-    profile = StudentProfileSummary(target_field="Computer Science")
-    ranked = service.rank_programs(programs, profile)
+    def test_normalize_rank_top_500(self, ranking_service):
+        """Test rank normalization for top 500."""
+        score = ranking_service._normalize_rank(300)
+        assert 50.0 <= score <= 65.0
 
-    assert ranked[0]["id"] == "2"
-    assert ranked[0]["match_score"] >= ranked[1]["match_score"]
+    def test_normalize_rank_beyond_1000(self, ranking_service):
+        """Test rank normalization for ranks beyond 1000."""
+        score = ranking_service._normalize_rank(1500)
+        assert score >= 20.0
 
+    def test_score_field_relevance_exact_match(self, ranking_service, sample_program_response):
+        """Test field relevance scoring for exact match."""
+        score = ranking_service._score_field_relevance(sample_program_response, "Computer Science")
+        assert score == 100.0
 
-def test_ranking_custom_weights():
-    """Custom weights should influence scoring."""
-    weights = {
-        "field_relevance": 80,
-        "requirement_match": 5,
-        "university_ranking": 5,
-        "deadline_proximity": 5,
-        "tuition_affordability": 5,
-    }
-    service = RankingService(weights=weights)
-    programs = [
-        {"id": "1", "program_name": "CS PhD", "field": "Computer Science", "university_ranking": 100},
-    ]
-    profile = StudentProfileSummary(target_field="Computer Science")
-    ranked = service.rank_programs(programs, profile)
+    def test_score_field_relevance_partial_match(self, ranking_service, sample_program_response):
+        """Test field relevance scoring for partial match."""
+        score = ranking_service._score_field_relevance(sample_program_response, "Computer")
+        assert score >= 70.0
 
-    assert ranked[0]["match_score"] > 0
+    def test_score_field_relevance_no_match(self, ranking_service, sample_program_response):
+        """Test field relevance scoring for no match."""
+        score = ranking_service._score_field_relevance(sample_program_response, "Biology")
+        assert score <= 50.0
 
+    def test_score_requirement_match_all_met(self, ranking_service, sample_program_response):
+        """Test requirement matching when all requirements are met."""
+        student = {"gpa": 4.0, "toefl": 120}
+        score = ranking_service._score_requirement_match(sample_program_response, student)
+        assert score == 100.0
 
-def test_university_ranking_score():
-    """Top-ranked universities should score higher."""
-    service = RankingService()
-    top_score = service._score_university_ranking({"university_ranking": 1})
-    low_score = service._score_university_ranking({"university_ranking": 400})
-    none_score = service._score_university_ranking({"university_ranking": None})
+    def test_score_requirement_match_partial(self, ranking_service, sample_program_response):
+        """Test requirement matching when some requirements are met."""
+        student = {"gpa": 4.0, "toefl": 80}
+        score = ranking_service._score_requirement_match(sample_program_response, student)
+        assert 40.0 <= score <= 60.0
 
-    assert top_score > low_score
-    assert none_score == 0.3
+    def test_score_deadline_proximity_far_future(self, ranking_service):
+        """Test deadline scoring for deadlines far in the future."""
+        future_date = date.today().replace(year=date.today().year + 1)
+        score = ranking_service._score_deadline_proximity(future_date)
+        assert score == 100.0
 
+    def test_score_deadline_proximity_past(self, ranking_service):
+        """Test deadline scoring for past deadlines."""
+        past_date = date(2020, 1, 1)
+        score = ranking_service._score_deadline_proximity(past_date)
+        assert score == 0.0
 
-def test_deadline_proximity_score():
-    """Deadlines further in the future should score higher."""
-    service = RankingService()
-    far_score = service._score_deadline_proximity({"deadline": "2027-12-31"})
-    none_score = service._score_deadline_proximity({"deadline": None})
-    past_score = service._score_deadline_proximity({"deadline": "2020-01-01"})
+    def test_score_deadline_proximity_none(self, ranking_service):
+        """Test deadline scoring when deadline is None."""
+        score = ranking_service._score_deadline_proximity(None)
+        assert score == 70.0
 
-    assert far_score > past_score
-    assert none_score == 0.5
-    assert past_score == 0.0
+    def test_score_tuition_affordability_within_budget(self, ranking_service):
+        """Test tuition scoring when tuition is within budget."""
+        score = ranking_service._score_tuition_affordability(Decimal("30000"), Decimal("60000"))
+        assert score >= 90.0
 
+    def test_score_tuition_affordability_at_budget(self, ranking_service):
+        """Test tuition scoring when tuition equals budget."""
+        score = ranking_service._score_tuition_affordability(Decimal("60000"), Decimal("60000"))
+        assert score == 80.0
 
-def test_tuition_affordability_score():
-    """Lower tuition should score higher."""
-    service = RankingService()
-    cheap_score = service._score_tuition_affordability({"tuition_usd": 5000}, None)
-    expensive_score = service._score_tuition_affordability({"tuition_usd": 70000}, None)
-    none_score = service._score_tuition_affordability({"tuition_usd": None}, None)
+    def test_score_tuition_affordability_over_budget(self, ranking_service):
+        """Test tuition scoring when tuition exceeds budget."""
+        score = ranking_service._score_tuition_affordability(Decimal("80000"), Decimal("60000"))
+        assert score <= 50.0
 
-    assert cheap_score > expensive_score
-    assert none_score == 0.5
+    def test_score_university_ranking_none(self, ranking_service):
+        """Test university ranking scoring when rank is None."""
+        score = ranking_service._score_university_ranking(None)
+        assert score == 50.0
 
-
-def test_field_relevance_exact_match():
-    """Exact field match should score high."""
-    service = RankingService()
-    profile = StudentProfileSummary(target_field="Computer Science")
-    program = {"field": "Computer Science", "program_name": "MSc Computer Science", "description": ""}
-
-    score = service._score_field_relevance(program, profile)
-    assert score > 0.5
-
-
-def test_field_relevance_no_profile():
-    """Without a profile, field relevance defaults to 0.5."""
-    service = RankingService()
-    score = service._score_field_relevance({"field": "CS"}, None)
-    assert score == 0.5
+    def test_score_university_ranking_top_10(self, ranking_service):
+        """Test university ranking scoring for top 10."""
+        score = ranking_service._score_university_ranking(5)
+        assert score >= 95.0

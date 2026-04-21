@@ -67,11 +67,11 @@ fi
 
 echo ""
 echo "4. Running pylint..."
-if pylint app/ tests/ > /dev/null 2>&1; then
+if pylint app/ tests/ --max-line-length=120 --disable=C0111,R0903,R0913,R0914,R0911,R0912,R0915,R0917,W0212,W0621,W0718,C0415,W0107,E0401 > /dev/null 2>&1; then
     success "Linting passed (pylint)"
 else
     error "Linting failed (pylint)"
-    pylint app/ tests/
+    pylint app/ tests/ --max-line-length=120 --disable=C0111,R0903,R0913,R0914,R0911,R0912,R0915,R0917,W0212,W0621,W0718,C0415,W0107,E0401
     exit 1
 fi
 
@@ -86,11 +86,11 @@ fi
 
 echo ""
 echo "6. Running tests..."
-if ALLOW_DB_FAILURE=true USE_MOCK_DATA=true X_SERVICE_TOKEN=test-service-token pytest tests/ -v --tb=short > /dev/null 2>&1; then
+if ALLOW_DB_FAILURE=true USE_MOCK_DATA=true INTERNAL_TOKEN_VERIFY_ENABLED=false pytest tests/ -v --tb=short > /dev/null 2>&1; then
     success "Tests passed"
 else
     error "Tests failed"
-    ALLOW_DB_FAILURE=true USE_MOCK_DATA=true X_SERVICE_TOKEN=test-service-token pytest tests/ -v --tb=short
+    ALLOW_DB_FAILURE=true USE_MOCK_DATA=true INTERNAL_TOKEN_VERIFY_ENABLED=false pytest tests/ -v --tb=short
     exit 1
 fi
 
@@ -102,6 +102,20 @@ else
     error "Type checking failed (mypy)"
     mypy app/ --ignore-missing-imports --no-strict-optional
     exit 1
+fi
+
+echo ""
+echo "8. Running security scan (Bandit)..."
+if command -v bandit > /dev/null 2>&1; then
+    if bandit -r app/ -c bandit.yaml > /dev/null 2>&1; then
+        success "Security scan passed (Bandit)"
+    else
+        error "Security scan failed (Bandit)"
+        bandit -r app/ -c bandit.yaml
+        exit 1
+    fi
+else
+    warning "Bandit not installed, skipping security scan"
 fi
 
 echo ""

@@ -1,86 +1,78 @@
-"""Program search, filter, and rank orchestration."""
+"""Service layer for program operations."""
 
-from typing import Any
-
-from app.config import settings
 from app.core.logging import get_logger
-from app.models.program import ProgramSearchRequest
-from app.repositories.mysql_program_repo import ProgramRepository
-from app.repositories.mysql_requirement_repo import RequirementRepository
-from app.repositories.mysql_university_repo import UniversityRepository
-from app.services.ranking_service import RankingService
+from app.models import (
+    PaginatedResponse,
+    ProgramCreate,
+    ProgramDB,
+    ProgramRequirementBase,
+    ProgramResponse,
+    ProgramSearchRequest,
+    ProgramUpdate,
+)
+from app.repositories import ProgramRepository, ProgramRequirementRepository
 
 logger = get_logger(__name__)
 
 
 class ProgramService:
-    """Business logic for program search and discovery."""
+    """Business logic for program operations."""
 
-    def __init__(self):
-        self.program_repo = ProgramRepository()
-        self.university_repo = UniversityRepository()
-        self.requirement_repo = RequirementRepository()
-        self.ranking_service = RankingService()
+    def __init__(
+        self,
+        program_repo: ProgramRepository | None = None,
+        requirement_repo: ProgramRequirementRepository | None = None,
+    ):
+        self._program_repo = program_repo or ProgramRepository()
+        self._requirement_repo = requirement_repo or ProgramRequirementRepository()
 
-    async def search_and_rank(self, request: ProgramSearchRequest) -> dict[str, Any]:
-        """Search programs, apply ranking, and return paginated results."""
-        programs = await self.program_repo.search_programs(
-            field=request.field,
-            degree_type=request.degree_type.value if request.degree_type else None,
-            limit=request.max_results,
-            offset=(request.page - 1) * request.max_results,
-        )
+    async def create_program(
+        self,
+        data: ProgramCreate,
+        requirements: list[ProgramRequirementBase] | None = None,
+    ) -> ProgramResponse:
+        """Create a new program with optional requirements."""
+        program = await self._program_repo.create(data)
 
-        total = await self.program_repo.count_programs(
-            field=request.field,
-            degree_type=request.degree_type.value if request.degree_type else None,
-        )
+        if requirements:
+            await self._requirement_repo.create_batch(program.id, requirements)
 
-        if request.student_profile:
-            programs = self.ranking_service.rank_programs(programs, request.student_profile)
+        return await self._program_repo.get_with_institution(program.id)
 
-        return {
-            "programs": programs,
-            "total": total,
-            "page": request.page,
-            "page_size": request.max_results,
-        }
+    async def get_program(self, program_id: str) -> ProgramResponse:
+        """Get a program by ID with institution details."""
+        return await self._program_repo.get_with_institution(program_id)
 
-    async def get_program_detail(self, program_id: str) -> dict[str, Any] | None:
-        """Return full program details including requirements."""
-        program = await self.program_repo.get_by_id(program_id)
-        if not program:
-            return None
+    async def update_program(self, program_id: str, data: ProgramUpdate) -> ProgramResponse:
+        """Update a program."""
+        await self._program_repo.update(program_id, data)
+        return await self._program_repo.get_with_institution(program_id)
 
-        requirements = await self.requirement_repo.get_by_program_id(program_id)
-        university = await self.university_repo.get_by_id(program["university_id"])
+    async def search_programs(self, request: ProgramSearchRequest) -> PaginatedResponse[ProgramResponse]:
+        """Search programs with filters."""
+        return await self._program_repo.search(request)
 
-        program["university_name"] = university["name"] if university else "Unknown"
-        program["country"] = university["country"] if university else None
-        program["university_ranking"] = university["ranking"] if university else None
-        program["requirements_list"] = requirements
+    async def get_programs_by_institution(self, institution_id: str) -> list[ProgramDB]:
+        """Get all programs for an institution."""
+        return await self._program_repo.get_by_institution(institution_id)
 
-        return program
+    async def get_program_requirements(self, program_id: str):
+        """Get all requirements for a program."""
+        return await self._requirement_repo.get_by_program(program_id)
 
-    async def get_stale_programs(self) -> list[dict[str, Any]]:
-        """Return programs not crawled within the staleness threshold."""
-        return await self.program_repo.get_stale_programs(settings.PROGRAM_STALENESS_DAYS)
+    async def set_program_requirements(self, program_id: str, requirements: list[ProgramRequirementBase]):
+        """Replace all requirements for a program."""
+        await self._requirement_repo.delete_by_program(program_id)
+        return await self._requirement_repo.create_batch(program_id, requirements)
 
-    async def store_crawled_program(self, data: dict[str, Any]) -> str:
-        """Store or update a crawled program."""
-        existing = None
-        if data.get("source_url"):
-            results = await self.program_repo.search_programs(field=None, limit=1)
-            for r in results:
-                if r.get("source_url") == data["source_url"]:
-                    existing = r
-                    break
+    async def get_program_count(self) -> int:
+        """Get total count of active programs."""
+        return await self._program_repo.count()
 
-        if existing:
-            await self.program_repo.update_program(existing["id"], data)
-            logger.info("program_updated_from_crawl", program_id=existing["id"])
-            return existing["id"]
+    async def get_all_fields(self) -> list[str]:
+        """Get list of all unique fields."""
+        return await self._program_repo.get_all_fields()
 
-        program_id = await self.program_repo.create_program(data)
-        logger.info("program_created_from_crawl", program_id=program_id)
-        return program_id
+    async def get_all_field_categories(self) -> list[str]:
+        """Get list of all unique field categories."""
+        return await self._program_repo.get_all_field_categories()

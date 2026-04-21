@@ -7,12 +7,12 @@ from fastapi import FastAPI, Request
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 
-from app.api import crawl, health, programs
+from app.api import admin, chat, crawl, health, institutions, programs
 from app.config import APP_VERSION, settings
 from app.core.logging import get_logger, setup_logging
 from app.middleware.logging_middleware import LoggingMiddleware
-from app.repositories.db_pool import DatabasePoolConfig, close_pool, create_pool
-from app.services.scheduler_service import start_scheduler, stop_scheduler
+from app.repositories import DatabasePoolConfig, close_pool, create_pool
+from app.services import start_scheduler, stop_scheduler
 from app.utils.exceptions import ProgramDiscoveryBaseError
 
 load_dotenv()
@@ -38,6 +38,7 @@ async def lifespan(_application: FastAPI):
                     pool_size=settings.DB_POOL_SIZE,
                 )
             )
+            logger.info("database_ready")
         except Exception as exc:  # pylint: disable=broad-exception-caught
             logger.error("database_connection_failed", error=str(exc))
             raise
@@ -59,7 +60,7 @@ async def lifespan(_application: FastAPI):
 app = FastAPI(
     title="Program Discovery Agent",
     version=APP_VERSION,
-    description="Microservice for crawling university websites, extracting program metadata, and ranking programs",
+    description="Microservice for discovering, searching, and ranking academic programs",
     lifespan=lifespan,
     swagger_ui_parameters={
         "persistAuthorization": True,
@@ -95,8 +96,11 @@ app.add_middleware(LoggingMiddleware)
 # -- Routers -----------------------------------------------------------
 
 app.include_router(health.router)
+app.include_router(institutions.router)
 app.include_router(programs.router)
 app.include_router(crawl.router)
+app.include_router(chat.router)
+app.include_router(admin.router)
 
 
 # -- Custom OpenAPI ----------------------------------------------------
@@ -122,5 +126,9 @@ app.openapi = custom_openapi  # type: ignore[method-assign]
 if __name__ == "__main__":
     import uvicorn
 
-    # Local dev only; Docker/production uses Dockerfile CMD with 0.0.0.0.
-    uvicorn.run(app, host="127.0.0.1", port=8002, reload=True)
+    uvicorn.run(
+        app,
+        host=settings.UVICORN_HOST,
+        port=settings.UVICORN_PORT,
+        reload=True,
+    )

@@ -31,8 +31,20 @@ async def call_anthropic(
     user_content: str,
     model: str | None = None,
     max_tokens: int | None = None,
+    json_mode: bool = True,
 ) -> dict:
-    """Send a message to Anthropic and return the parsed JSON response."""
+    """Send a message to Anthropic and return the parsed response.
+
+    Args:
+        system_prompt: The system instruction for the model.
+        user_content: The user's query or content.
+        model: Override the default model.
+        max_tokens: Override the default max tokens.
+        json_mode: If True, expect JSON response.
+
+    Returns:
+        Dictionary with content, model, provider, and token usage.
+    """
     client = get_anthropic_client()
     model = model or settings.ANTHROPIC_MODEL
     max_tokens = max_tokens or settings.ANTHROPIC_MAX_TOKENS
@@ -59,8 +71,9 @@ async def call_anthropic(
         output_tokens=usage.output_tokens if usage else None,
     )
 
+    content = json.loads(raw) if json_mode else raw
     return {
-        "content": json.loads(raw),
+        "content": content,
         "model": model,
         "provider": "anthropic",
         "input_tokens": usage.input_tokens if usage else None,
