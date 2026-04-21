@@ -239,7 +239,7 @@ class ProgramRepository:
             JOIN institutions i ON p.institution_id = i.id
             {ranking_join}
             WHERE {where_sql}
-            ORDER BY institution_rank ASC NULLS LAST, p.program_name ASC
+            ORDER BY institution_rank IS NULL, institution_rank ASC, p.program_name ASC
             LIMIT %s OFFSET %s
         """  # nosec B608
 

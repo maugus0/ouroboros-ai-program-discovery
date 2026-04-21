@@ -173,7 +173,7 @@ class InstitutionRepository:
             FROM institutions i
             {join_clause}
             WHERE {where_sql}
-            ORDER BY best_rank ASC NULLS LAST, i.name ASC
+            ORDER BY best_rank IS NULL, best_rank ASC, i.name ASC
             LIMIT %s OFFSET %s
         """  # nosec B608
 
