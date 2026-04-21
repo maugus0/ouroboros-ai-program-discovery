@@ -21,8 +21,8 @@ load_dotenv()
 from app.config import settings
 from app.core.logging import get_logger, setup_logging
 from app.models import (
-    InstitutionFromRankingData,
     InstitutionFocus,
+    InstitutionFromRankingData,
     InstitutionSize,
     InstitutionType,
     RankingSource,
@@ -93,15 +93,15 @@ def map_research_output(output_str: str | None) -> ResearchOutput:
 async def seed_qs_rankings():
     """Seed QS rankings from JSON file."""
     data_file = Path(__file__).parent.parent / "data" / "qs_world_rankings_2026.json"
-    
+
     if not data_file.exists():
         logger.error("qs_data_file_not_found", path=str(data_file))
         logger.info("run_generate_first", command="python scripts/generate_qs_json.py")
         return
-    
+
     with open(data_file, "r", encoding="utf-8") as f:
         data = json.load(f)
-    
+
     pool = await create_pool(
         DatabasePoolConfig(
             host=settings.get_db_host(),
@@ -111,19 +111,19 @@ async def seed_qs_rankings():
             password=settings.get_db_password(),
         )
     )
-    
+
     await run_migrations(pool)
-    
+
     institution_repo = InstitutionRepository()
     ranking_repo = InstitutionRankingRepository()
-    
+
     ranking_source = RankingSource(data["ranking_source"])
     ranking_year = data["ranking_year"]
     source_url = data.get("source_url")
-    
+
     institutions_created = 0
     rankings_created = 0
-    
+
     for item in data["institutions"]:
         try:
             institution_data = InstitutionFromRankingData(
@@ -137,10 +137,10 @@ async def seed_qs_rankings():
                 focus=map_focus(item.get("focus")),
                 research_output=map_research_output(item.get("research_output")),
             )
-            
+
             institution = await institution_repo.upsert_from_ranking(institution_data)
             institutions_created += 1
-            
+
             ranking_data = RankingUpsertData(
                 institution_id=institution.id,
                 ranking_source=ranking_source,
@@ -152,19 +152,19 @@ async def seed_qs_rankings():
                 source_url=source_url,
                 raw_metadata=item.get("indicators"),
             )
-            
+
             await ranking_repo.upsert(ranking_data)
             rankings_created += 1
-            
+
             if rankings_created % 100 == 0:
                 logger.info("seed_progress", institutions=institutions_created, rankings=rankings_created)
-                
+
         except Exception as exc:
             logger.error("seed_item_failed", error=str(exc), name=item.get("name"))
             continue
-    
+
     await close_pool()
-    
+
     logger.info(
         "seed_completed",
         institutions=institutions_created,

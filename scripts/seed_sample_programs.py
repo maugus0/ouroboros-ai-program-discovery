@@ -62,7 +62,12 @@ SAMPLE_PROGRAMS = [
                     {"type": RequirementType.GPA, "name": "Minimum GPA", "value": "3.5", "mandatory": True},
                     {"type": RequirementType.GRE, "name": "GRE General", "value": "320+", "mandatory": False},
                     {"type": RequirementType.TOEFL, "name": "TOEFL iBT", "value": "100", "mandatory": True},
-                    {"type": RequirementType.RECOMMENDATION, "name": "Letters of Recommendation", "value": "3", "mandatory": True},
+                    {
+                        "type": RequirementType.RECOMMENDATION,
+                        "name": "Letters of Recommendation",
+                        "value": "3",
+                        "mandatory": True,
+                    },
                 ],
             },
             {
@@ -102,7 +107,12 @@ SAMPLE_PROGRAMS = [
                 "requirements": [
                     {"type": RequirementType.GPA, "name": "Minimum GPA", "value": "3.7", "mandatory": True},
                     {"type": RequirementType.IELTS, "name": "IELTS", "value": "7.0", "mandatory": True},
-                    {"type": RequirementType.DEGREE, "name": "Bachelor's Degree", "value": "Computer Science or related", "mandatory": True},
+                    {
+                        "type": RequirementType.DEGREE,
+                        "name": "Bachelor's Degree",
+                        "value": "Computer Science or related",
+                        "mandatory": True,
+                    },
                 ],
             },
         ],
@@ -186,7 +196,12 @@ SAMPLE_PROGRAMS = [
                 "intake": "September",
                 "requirements": [
                     {"type": RequirementType.GPA, "name": "Minimum GPA", "value": "3.5", "mandatory": True},
-                    {"type": RequirementType.DEGREE, "name": "Bachelor's Degree", "value": "Engineering or related", "mandatory": True},
+                    {
+                        "type": RequirementType.DEGREE,
+                        "name": "Bachelor's Degree",
+                        "value": "Engineering or related",
+                        "mandatory": True,
+                    },
                 ],
             },
         ],
@@ -207,9 +222,19 @@ SAMPLE_PROGRAMS = [
                 "mode": ProgramMode.ON_CAMPUS,
                 "intake": "October",
                 "requirements": [
-                    {"type": RequirementType.GPA, "name": "First-class Honours", "value": "First or Upper Second", "mandatory": True},
+                    {
+                        "type": RequirementType.GPA,
+                        "name": "First-class Honours",
+                        "value": "First or Upper Second",
+                        "mandatory": True,
+                    },
                     {"type": RequirementType.IELTS, "name": "IELTS", "value": "7.5", "mandatory": True},
-                    {"type": RequirementType.RECOMMENDATION, "name": "Academic References", "value": "3", "mandatory": True},
+                    {
+                        "type": RequirementType.RECOMMENDATION,
+                        "name": "Academic References",
+                        "value": "3",
+                        "mandatory": True,
+                    },
                 ],
             },
         ],
@@ -230,7 +255,12 @@ SAMPLE_PROGRAMS = [
                 "mode": ProgramMode.ON_CAMPUS,
                 "intake": "October",
                 "requirements": [
-                    {"type": RequirementType.GPA, "name": "First-class Honours", "value": "First or equivalent", "mandatory": True},
+                    {
+                        "type": RequirementType.GPA,
+                        "name": "First-class Honours",
+                        "value": "First or equivalent",
+                        "mandatory": True,
+                    },
                     {"type": RequirementType.IELTS, "name": "IELTS", "value": "7.5", "mandatory": True},
                 ],
             },
@@ -278,7 +308,12 @@ SAMPLE_PROGRAMS = [
                     {"type": RequirementType.GPA, "name": "Minimum GPA", "value": "3.5", "mandatory": True},
                     {"type": RequirementType.GRE, "name": "GRE General", "value": "Not required", "mandatory": False},
                     {"type": RequirementType.TOEFL, "name": "TOEFL iBT", "value": "100", "mandatory": True},
-                    {"type": RequirementType.RECOMMENDATION, "name": "Letters of Recommendation", "value": "3", "mandatory": True},
+                    {
+                        "type": RequirementType.RECOMMENDATION,
+                        "name": "Letters of Recommendation",
+                        "value": "3",
+                        "mandatory": True,
+                    },
                 ],
             },
         ],
@@ -301,7 +336,12 @@ SAMPLE_PROGRAMS = [
                 "requirements": [
                     {"type": RequirementType.GPA, "name": "Minimum GPA", "value": "3.0", "mandatory": True},
                     {"type": RequirementType.TOEFL, "name": "TOEFL iBT", "value": "90", "mandatory": True},
-                    {"type": RequirementType.WORK_EXPERIENCE, "name": "Work Experience", "value": "Preferred", "mandatory": False},
+                    {
+                        "type": RequirementType.WORK_EXPERIENCE,
+                        "name": "Work Experience",
+                        "value": "Preferred",
+                        "mandatory": False,
+                    },
                 ],
             },
         ],
@@ -320,24 +360,24 @@ async def seed_sample_programs():
             password=settings.get_db_password(),
         )
     )
-    
+
     await run_migrations(pool)
-    
+
     institution_repo = InstitutionRepository()
     program_repo = ProgramRepository()
     requirement_repo = ProgramRequirementRepository()
-    
+
     programs_created = 0
     requirements_created = 0
-    
+
     for item in SAMPLE_PROGRAMS:
         slug = item["institution_slug"]
-        
+
         institution = await institution_repo.get_by_slug(slug)
         if not institution:
             logger.warning("institution_not_found", slug=slug)
             continue
-        
+
         for prog_data in item["programs"]:
             try:
                 program = await program_repo.create(
@@ -358,7 +398,7 @@ async def seed_sample_programs():
                     )
                 )
                 programs_created += 1
-                
+
                 if "requirements" in prog_data:
                     requirements = [
                         ProgramRequirementBase(
@@ -371,22 +411,22 @@ async def seed_sample_programs():
                     ]
                     await requirement_repo.create_batch(program.id, requirements)
                     requirements_created += len(requirements)
-                
+
                 logger.info(
                     "program_created",
                     name=prog_data["program_name"],
                     institution=institution.name,
                 )
-                
+
             except Exception as exc:
                 logger.error(
                     "program_create_failed",
                     error=str(exc),
                     name=prog_data.get("program_name"),
                 )
-    
+
     await close_pool()
-    
+
     logger.info(
         "seed_completed",
         programs=programs_created,

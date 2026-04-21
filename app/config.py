@@ -33,12 +33,35 @@ class Settings(BaseSettings):
     INTERNAL_TOKEN_AUDIENCE: str = "ouroboros.program-discovery"
     INTERNAL_TOKEN_ISSUER: str = "ouroboros-orchestrator-internal"
 
+    # ========== LLM Configuration ==========
+    # Primary: OpenAI
+    OPENAI_API_KEY: str = ""
+    OPENAI_MODEL: str = "gpt-4o-mini"
+    OPENAI_MAX_TOKENS: int = 2000
+    OPENAI_TEMPERATURE: float = 0.0
+
+    # Fallback: Anthropic
+    ANTHROPIC_API_KEY: str = ""
+    ANTHROPIC_MODEL: str = "claude-haiku-4-5-20251001"
+    ANTHROPIC_MAX_TOKENS: int = 2000
+
+    # Retry settings
+    LLM_MAX_RETRIES: int = 3
+    LLM_RETRY_DELAY: int = 2
+
     # ========== Ranking Weights (must sum to 100) ==========
     RANKING_WEIGHT_FIELD_RELEVANCE: int = 40
     RANKING_WEIGHT_REQUIREMENT_MATCH: int = 25
     RANKING_WEIGHT_UNIVERSITY_RANKING: int = 15
     RANKING_WEIGHT_DEADLINE_PROXIMITY: int = 10
     RANKING_WEIGHT_TUITION_AFFORDABILITY: int = 10
+
+    # ========== Crawling Configuration ==========
+    CRAWL_RESPECT_ROBOTS_TXT: bool = True
+    CRAWL_RATE_LIMIT_DELAY: float = 2.0
+    CRAWL_USER_AGENT: str = "OuroborosCrawler/1.0 (+https://ouroboros.ai/crawler)"
+    CRAWL_TIMEOUT_SECONDS: int = 30
+    CRAWL_STALE_DAYS: int = 30
 
     # ========== Application ==========
     LOG_LEVEL: str = "INFO"
