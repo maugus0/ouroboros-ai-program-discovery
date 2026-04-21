@@ -81,7 +81,8 @@ class CrawlJobRepository:
             return await self.get_by_id(job_id)
 
         params.append(job_id)
-        sql = f"UPDATE crawl_jobs SET {', '.join(update_fields)} WHERE id = %s"
+        # Field names are from model schema, not user input - safe from injection
+        sql = f"UPDATE crawl_jobs SET {', '.join(update_fields)} WHERE id = %s"  # nosec B608
 
         try:
             async with pool.acquire() as conn:

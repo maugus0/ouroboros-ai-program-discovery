@@ -105,4 +105,18 @@ else
 fi
 
 echo ""
+echo "8. Running security scan (Bandit)..."
+if command -v bandit > /dev/null 2>&1; then
+    if bandit -r app/ -c bandit.yaml > /dev/null 2>&1; then
+        success "Security scan passed (Bandit)"
+    else
+        error "Security scan failed (Bandit)"
+        bandit -r app/ -c bandit.yaml
+        exit 1
+    fi
+else
+    warning "Bandit not installed, skipping security scan"
+fi
+
+echo ""
 echo -e "${GREEN}All checks passed! Ready to commit.${NC}"

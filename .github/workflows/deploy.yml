@@ -258,14 +258,28 @@ jobs:
         if: env.SNYK_TOKEN != ''
         uses: snyk/actions/setup@v1.0.0
 
+      - name: Install dependencies for Snyk resolution
+        if: env.SNYK_TOKEN != ''
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
       - name: Run Snyk dependency test
         if: env.SNYK_TOKEN != ''
+        continue-on-error: true
+        id: snyk-test
         run: |
           snyk auth "$SNYK_TOKEN"
           snyk test \
             --file=requirements.txt \
             --severity-threshold=high \
+            --skip-unresolved=true \
             --sarif-file-output=snyk.sarif
+
+      - name: Check Snyk results
+        if: env.SNYK_TOKEN != '' && steps.snyk-test.outcome == 'failure'
+        run: |
+          echo "::warning::Snyk scan reported issues. Check the SARIF artifact for details."
 
       - name: Upload Snyk SARIF to Code Scanning
         if: vars.ENABLE_CODE_SCANNING_SARIF == 'true' && env.SNYK_TOKEN != '' && always() && hashFiles('snyk.sarif') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)

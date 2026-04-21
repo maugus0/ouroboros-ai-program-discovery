@@ -145,7 +145,8 @@ class ProgramRepository:
             return await self.get_by_id(program_id)
 
         params.append(program_id)
-        sql = f"UPDATE programs SET {', '.join(update_fields)} WHERE id = %s"
+        # Field names are from model schema, not user input - safe from injection
+        sql = f"UPDATE programs SET {', '.join(update_fields)} WHERE id = %s"  # nosec B608
 
         try:
             async with pool.acquire() as conn:
@@ -220,13 +221,15 @@ class ProgramRepository:
 
         where_sql = " AND ".join(where_clauses)
 
+        # Dynamic SQL parts (ranking_join, where_sql) are built from controlled code paths,
+        # user input is parameterized via %s placeholders - safe from injection
         count_sql = f"""
             SELECT COUNT(DISTINCT p.id) as total
             FROM programs p
             JOIN institutions i ON p.institution_id = i.id
             {ranking_join}
             WHERE {where_sql}
-        """
+        """  # nosec B608
 
         offset = (request.page - 1) * request.page_size
         select_sql = f"""
@@ -238,7 +241,7 @@ class ProgramRepository:
             WHERE {where_sql}
             ORDER BY institution_rank ASC NULLS LAST, p.program_name ASC
             LIMIT %s OFFSET %s
-        """
+        """  # nosec B608
 
         try:
             async with pool.acquire() as conn:

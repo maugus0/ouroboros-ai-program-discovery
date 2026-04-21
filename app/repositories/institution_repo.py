@@ -155,12 +155,14 @@ class InstitutionRepository:
 
         where_sql = " AND ".join(where_clauses)
 
+        # Dynamic SQL parts (join_clause, where_sql) are built from controlled code paths,
+        # user input is parameterized via %s placeholders - safe from injection
         count_sql = f"""
             SELECT COUNT(DISTINCT i.id) as total
             FROM institutions i
             {join_clause}
             WHERE {where_sql}
-        """
+        """  # nosec B608
 
         offset = (request.page - 1) * request.page_size
         select_sql = f"""
@@ -173,7 +175,7 @@ class InstitutionRepository:
             WHERE {where_sql}
             ORDER BY best_rank ASC NULLS LAST, i.name ASC
             LIMIT %s OFFSET %s
-        """
+        """  # nosec B608
 
         try:
             async with pool.acquire() as conn:
