@@ -152,8 +152,8 @@ async def ask_about_programs(
     """
     logger.info("program_question_received", question=request.question[:100])
 
-    programs_context = []
-    institutions_context = []
+    programs_context: list[dict[str, Any]] = []
+    institutions_context: list[dict[str, Any]] = []
 
     is_inst_query = _is_institution_query(request.question)
 
@@ -180,15 +180,36 @@ async def ask_about_programs(
             page_size=min(limit, 100),
         )
         inst_result = await institution_service.search_institutions(inst_search)
-        institutions_context = [
-            {
+
+        # Fetch detailed ranking info for each institution
+        for inst in inst_result.items:
+            rankings = await institution_service.get_institution_rankings(inst.id)
+            qs_ranking = next((r for r in rankings if r.ranking_source.value == "qs_world"), None)
+
+            inst_data: dict[str, Any] = {
                 "rank": inst.best_rank,
                 "name": inst.name,
                 "country": inst.country,
+                "city": inst.city,
                 "type": inst.institution_type.value if inst.institution_type else None,
+                "size": inst.size.value if inst.size and inst.size.value != "unknown" else None,
+                "focus": inst.focus.value if inst.focus and inst.focus.value != "unknown" else None,
+                "research_output": (
+                    inst.research_output.value
+                    if inst.research_output and inst.research_output.value != "unknown"
+                    else None
+                ),
             }
-            for inst in inst_result.items
-        ]
+
+            if qs_ranking:
+                inst_data["overall_score"] = float(qs_ranking.overall_score) if qs_ranking.overall_score else None
+                inst_data["previous_rank"] = qs_ranking.previous_rank_display
+                inst_data["ranking_year"] = qs_ranking.ranking_year
+                if qs_ranking.raw_metadata:
+                    inst_data["indicators"] = qs_ranking.raw_metadata
+
+            institutions_context.append(inst_data)
+
         logger.info("institutions_found", count=len(institutions_context))
 
     if not is_inst_query or request.filters:

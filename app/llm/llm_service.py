@@ -195,17 +195,51 @@ class LLMService:
         parts = [f"Question: {question}\n"]
 
         if institutions:
-            parts.append("Universities from QS World Rankings (real data from our database):")
+            parts.append("Universities from QS World Rankings 2026 (real data from our database):\n")
             for inst in institutions:
                 rank = inst.get("rank")
                 rank_str = f"#{rank}" if rank else "Unranked"
-                inst_type = inst.get("type", "")
-                type_str = f" ({inst_type})" if inst_type and inst_type != "unknown" else ""
-                parts.append(f"{rank_str}. {inst.get('name', 'Unknown')} - {inst.get('country', 'Unknown')}{type_str}")
-            parts.append("")
+                name = inst.get("name", "Unknown")
+                country = inst.get("country", "Unknown")
+                city = inst.get("city")
+                location = f"{city}, {country}" if city else country
+
+                parts.append(f"{rank_str}. {name}")
+                parts.append(f"   Location: {location}")
+
+                if inst.get("overall_score"):
+                    parts.append(f"   Overall Score: {inst['overall_score']:.1f}/100")
+
+                if inst.get("previous_rank"):
+                    parts.append(f"   Previous Rank: {inst['previous_rank']}")
+
+                details = []
+                if inst.get("type") and inst["type"] != "unknown":
+                    details.append(inst["type"].replace("_", " ").title())
+                if inst.get("size") and inst["size"] != "unknown":
+                    details.append(f"Size: {inst['size'].replace('_', ' ').title()}")
+                if inst.get("research_output") and inst["research_output"] != "unknown":
+                    details.append(f"Research: {inst['research_output'].replace('_', ' ').title()}")
+                if details:
+                    parts.append(f"   Type: {', '.join(details)}")
+
+                indicators = inst.get("indicators", {})
+                if indicators:
+                    key_indicators = []
+                    if indicators.get("academic_reputation"):
+                        key_indicators.append(f"Academic Rep: {indicators['academic_reputation']:.1f}")
+                    if indicators.get("employer_reputation"):
+                        key_indicators.append(f"Employer Rep: {indicators['employer_reputation']:.1f}")
+                    if indicators.get("citations_per_faculty"):
+                        key_indicators.append(f"Citations: {indicators['citations_per_faculty']:.1f}")
+                    if key_indicators:
+                        parts.append(f"   Key Scores: {', '.join(key_indicators)}")
+
+                parts.append("")
+
             parts.append(
                 "IMPORTANT: Use ONLY the above real university data from our database. "
-                "Do not make up or guess rankings. Present this data accurately."
+                "Present this data accurately with ranks and scores. Format the response clearly with ranks visible."
             )
             parts.append("")
 
