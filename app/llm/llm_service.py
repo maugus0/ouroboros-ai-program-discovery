@@ -3,6 +3,10 @@
 import time
 from typing import Any
 
+from app.agents.program_discovery.program_ranking_engine import (
+    apply_react_ranking_pattern,
+    build_agent_reasoning,
+)
 from app.config import settings
 from app.core.logging import get_logger
 from app.llm.anthropic_client import call_anthropic
@@ -29,6 +33,7 @@ class LLMService:
         programs_context: list[dict[str, Any]],
         institutions_context: list[dict[str, Any]] | None = None,
         student_profile: dict[str, Any] | None = None,
+        include_explainability: bool = True,
     ) -> dict[str, Any]:
         """Answer a user's question about programs or institutions using LLM.
 
@@ -37,9 +42,10 @@ class LLMService:
             programs_context: List of relevant programs to consider.
             institutions_context: List of relevant institutions/universities (from QS rankings).
             student_profile: Optional student profile for personalized answers.
+            include_explainability: Whether to include agent_reasoning (default True).
 
         Returns:
-            Dictionary with answer, sources, and metadata.
+            Dictionary with answer, sources, metadata, and optional agent_reasoning.
         """
         system_prompt = get_program_qa_prompt()
         user_content = self._build_qa_user_content(
@@ -48,16 +54,120 @@ class LLMService:
 
         result = await self._call_with_fallback(system_prompt, user_content, purpose="program_qa")
 
-        return {
+        model = result["model"]
+        provider = result["provider"]
+
+        response = {
             "answer": result["content"].get("answer", ""),
             "programs_mentioned": result["content"].get("programs_mentioned", []),
             "follow_up_suggestions": result["content"].get("follow_up_suggestions", []),
             "confidence": result["content"].get("confidence", 0.0),
-            "model": result["model"],
-            "provider": result["provider"],
+            "model": model,
+            "provider": provider,
             "input_tokens": result["input_tokens"],
             "output_tokens": result["output_tokens"],
         }
+
+        if include_explainability:
+            agent_reasoning = self._build_program_qa_reasoning(
+                programs_context=programs_context,
+                institutions_context=institutions_context or [],
+                student_profile=student_profile or {},
+                llm_confidence=result["content"].get("confidence", 0.0),
+                model=model,
+                provider=provider,
+            )
+            response["agent_reasoning"] = agent_reasoning
+
+        return response
+
+    def _build_program_qa_reasoning(
+        self,
+        programs_context: list[dict[str, Any]],
+        institutions_context: list[dict[str, Any]],
+        student_profile: dict[str, Any],
+        llm_confidence: float,
+        model: str,
+        provider: str,
+    ) -> dict[str, Any]:
+        """Build agent_reasoning for program Q&A responses.
+
+        This applies the ReAct pattern to provide transparency into
+        how programs were evaluated and which were recommended.
+
+        Handles three cases:
+        1. Only institutions found - institution-focused reasoning
+        2. Programs found - full ReAct ranking with scoring
+        3. Neither found - explains no database matches, LLM used general knowledge
+        """
+        # Case 3: No database results - LLM answered from general knowledge
+        if not programs_context and not institutions_context:
+            return {
+                "approach": "No matching programs or institutions found in database. "
+                "Answer generated from LLM's general knowledge about universities and programs.",
+                "decision_factors": [
+                    "Searched programs database: 0 matches found",
+                    "Searched institutions database: 0 matches found",
+                    "LLM provided response based on general knowledge",
+                    "Recommendation: Use specific filters or check spelling of institution/program names",
+                ],
+                "ranking_breakdown": [],
+                "filters_applied": [],
+                "total_programs_evaluated": 0,
+                "total_programs_recommended": 0,
+                "confidence": llm_confidence * 0.7,  # Lower confidence for general knowledge
+                "model": model,
+                "provider": provider,
+                "react_decision_trace": {},
+                "data_source": "llm_general_knowledge",
+            }
+
+        # Case 1: Only institutions found (no programs)
+        if not programs_context:
+            return {
+                "approach": "Institution-focused query answered using QS ranking data from database.",
+                "decision_factors": [
+                    f"Analyzed {len(institutions_context)} institutions from QS World Rankings",
+                    "No program-specific ranking performed for this query type",
+                    "Response includes real ranking data and institution details",
+                ],
+                "ranking_breakdown": [],
+                "filters_applied": [],
+                "total_programs_evaluated": 0,
+                "total_programs_recommended": 0,
+                "total_institutions_analyzed": len(institutions_context),
+                "confidence": llm_confidence,
+                "model": model,
+                "provider": provider,
+                "react_decision_trace": {},
+                "data_source": "institution_rankings",
+            }
+
+        # Case 2: Programs found - full ReAct ranking
+        react_result = apply_react_ranking_pattern(
+            programs=programs_context,
+            student_profile=student_profile,
+        )
+
+        agent_reasoning = build_agent_reasoning(
+            react_result=react_result,
+            student_profile=student_profile,
+            model=model,
+            provider=provider,
+        )
+
+        agent_reasoning["data_source"] = "program_database"
+
+        if institutions_context:
+            agent_reasoning["decision_factors"].insert(
+                1, f"Also analyzed {len(institutions_context)} institutions from QS rankings"
+            )
+            agent_reasoning["total_institutions_analyzed"] = len(institutions_context)
+
+        combined_confidence = (agent_reasoning["confidence"] + llm_confidence) / 2
+        agent_reasoning["confidence"] = round(combined_confidence, 2)
+
+        return agent_reasoning
 
     async def extract_search_intent(
         self,

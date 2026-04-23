@@ -4,7 +4,7 @@ import re
 from typing import Any
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.logging import get_logger
 from app.llm import LLMService
@@ -88,6 +88,57 @@ def _extract_country_from_question(question: str) -> str | None:
     return None
 
 
+def _extract_institution_keywords(question: str) -> list[str]:
+    """Extract institution name keywords from a question.
+
+    Handles common abbreviations and partial names like 'nus', 'mit', 'oxford'.
+    Returns keywords that can be used to search for institutions.
+    """
+    q_lower = question.lower()
+
+    # Common institution abbreviations/aliases mapped to search terms
+    institution_aliases = {
+        "nus": "National University of Singapore",
+        "ntu": "Nanyang Technological University",
+        "mit": "Massachusetts Institute of Technology",
+        "caltech": "California Institute of Technology",
+        "eth": "ETH Zurich",
+        "eth zurich": "ETH Zurich",
+        "oxford": "University of Oxford",
+        "cambridge": "University of Cambridge",
+        "harvard": "Harvard University",
+        "stanford": "Stanford University",
+        "berkeley": "University of California",
+        "imperial": "Imperial College London",
+        "ucl": "University College London",
+        "lse": "London School of Economics",
+        "yale": "Yale University",
+        "princeton": "Princeton University",
+        "columbia": "Columbia University",
+        "cornell": "Cornell University",
+        "upenn": "University of Pennsylvania",
+        "penn": "University of Pennsylvania",
+        "duke": "Duke University",
+        "chicago": "University of Chicago",
+        "ucla": "University of California",
+        "usc": "University of Southern California",
+        "nyu": "New York University",
+        "cmu": "Carnegie Mellon",
+        "carnegie mellon": "Carnegie Mellon",
+        "georgia tech": "Georgia Institute of Technology",
+        "gatech": "Georgia Institute of Technology",
+    }
+
+    keywords = []
+    for alias, full_name in institution_aliases.items():
+        # Check for word boundary matches to avoid false positives
+        pattern = rf"\b{re.escape(alias)}\b"
+        if re.search(pattern, q_lower):
+            keywords.append(full_name)
+
+    return keywords
+
+
 class ProgramQuestionRequest(BaseModel):
     """Request model for program questions."""
 
@@ -95,10 +146,14 @@ class ProgramQuestionRequest(BaseModel):
     filters: dict[str, Any] = Field(default_factory=dict, description="Optional filters")
     student_profile: dict[str, Any] | None = Field(None, description="Optional student profile")
     limit: int = Field(10, ge=1, le=50, description="Max programs to consider")
+    include_explainability: bool = Field(
+        True,
+        description="Include agent_reasoning with ReAct decision trace and evidence",
+    )
 
 
 class ProgramQuestionResponse(BaseModel):
-    """Response model for program questions."""
+    """Response model for program questions with explainability."""
 
     answer: str
     programs_mentioned: list[str] = Field(default_factory=list)
@@ -106,12 +161,22 @@ class ProgramQuestionResponse(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
     model: str
     provider: str
+    agent_reasoning: dict[str, Any] | None = Field(
+        None,
+        description="ReAct explainability trace with decision factors, ranking breakdown, and evidence",
+    )
 
 
 class IntentExtractionRequest(BaseModel):
-    """Request model for intent extraction."""
+    """Request model for intent extraction.
 
-    message: str = Field(..., description="The user's natural language message")
+    Accepts both 'message' and 'text' fields for backward compatibility
+    with orchestrator clients that may send either field name.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    message: str = Field(..., alias="text", description="The user's natural language message")
 
 
 class IntentExtractionResponse(BaseModel):
@@ -213,13 +278,44 @@ async def ask_about_programs(
         logger.info("institutions_found", count=len(institutions_context))
 
     if not is_inst_query or request.filters:
+        from app.models import InstitutionSearchRequest as InstSearchReq
         from app.models import ProgramSearchRequest
 
+        # Try to extract institution keywords from the question
+        institution_keywords = _extract_institution_keywords(request.question)
+        institution_id = None
+
+        if institution_keywords:
+            # Search for the institution by name
+            for keyword in institution_keywords:
+                inst_search = InstSearchReq(
+                    query=keyword,
+                    country=None,
+                    institution_type=None,
+                    min_rank=None,
+                    max_rank=None,
+                    ranking_source=None,
+                    ranking_year=None,
+                    page=1,
+                    page_size=1,
+                )
+                inst_result = await institution_service.search_institutions(inst_search)
+                if inst_result.items:
+                    institution_id = inst_result.items[0].id
+                    logger.info(
+                        "institution_extracted_from_question",
+                        keyword=keyword,
+                        institution_id=institution_id,
+                        institution_name=inst_result.items[0].name,
+                    )
+                    break
+
         prog_search = ProgramSearchRequest(
-            query=request.filters.get("query") or request.question[:50],
+            query=request.filters.get("query"),  # Don't use raw question as query
+            institution_id=institution_id,  # Use extracted institution if found
             field=request.filters.get("field"),
             degree_type=request.filters.get("degree_type"),
-            country=request.filters.get("country"),
+            country=_extract_country_from_question(request.question) or request.filters.get("country"),
             min_rank=None,
             max_rank=None,
             max_tuition_usd=None,
@@ -229,12 +325,29 @@ async def ask_about_programs(
         prog_result = await program_service.search_programs(prog_search)
         programs_context = [p.model_dump() for p in prog_result.items]
 
+        logger.info(
+            "program_search_completed",
+            institution_id=institution_id,
+            programs_found=len(programs_context),
+        )
+
     response = await llm_service.answer_program_question(
         question=request.question,
         programs_context=programs_context,
         institutions_context=institutions_context,
         student_profile=request.student_profile,
+        include_explainability=request.include_explainability,
     )
+
+    agent_reasoning = response.get("agent_reasoning") if request.include_explainability else None
+
+    if agent_reasoning:
+        logger.info(
+            "program_question_with_explainability",
+            total_evaluated=agent_reasoning.get("total_programs_evaluated", 0),
+            total_recommended=agent_reasoning.get("total_programs_recommended", 0),
+            confidence=agent_reasoning.get("confidence", 0),
+        )
 
     return ProgramQuestionResponse(
         answer=response["answer"],
@@ -243,6 +356,7 @@ async def ask_about_programs(
         confidence=response["confidence"],
         model=response["model"],
         provider=response["provider"],
+        agent_reasoning=agent_reasoning,
     )
 
 

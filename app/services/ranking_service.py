@@ -4,6 +4,10 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
+from app.agents.program_discovery.program_ranking_engine import (
+    apply_react_ranking_pattern,
+    build_agent_reasoning,
+)
 from app.config import settings
 from app.core.logging import get_logger
 from app.models import (
@@ -226,3 +230,150 @@ class RankingService:
         if tuition <= budget * 1.25:
             return 50.0
         return 20.0
+
+    async def rank_programs_with_explainability(
+        self,
+        request: ProgramRankingRequest,
+        model: str = "gpt-4o-mini",
+        provider: str = "openai",
+    ) -> dict[str, Any]:
+        """Rank programs with full ReAct explainability.
+
+        This method provides comprehensive transparency into the ranking
+        process, including per-program decision traces and evidence.
+
+        Args:
+            request: The ranking request with student profile and filters.
+            model: LLM model name (for metadata).
+            provider: LLM provider name (for metadata).
+
+        Returns:
+            Dictionary containing:
+            - ranked_programs: List of RankedProgram objects
+            - agent_reasoning: Full explainability structure
+            - react_result: Raw ReAct engine output
+        """
+        search_request = ProgramSearchRequest(
+            query=None,
+            field=request.target_field,
+            degree_type=request.target_degree,
+            country=request.country_preferences[0] if request.country_preferences else None,
+            min_rank=None,
+            max_rank=None,
+            max_tuition_usd=request.max_tuition_usd,
+            deadline_after=request.deadline_cutoff,
+            page=1,
+            page_size=request.limit * 3,
+        )
+
+        result = await self._program_repo.search(search_request)
+        programs = result.items
+
+        programs_as_dicts = [
+            {
+                **p.model_dump(),
+                "institution_name": p.institution_name,
+                "institution_country": p.institution_country,
+                "institution_rank": p.institution_rank,
+            }
+            for p in programs
+        ]
+
+        weights = self._get_react_weights()
+
+        react_result = apply_react_ranking_pattern(
+            programs=programs_as_dicts,
+            student_profile=request.student_profile,
+            weights=weights,
+        )
+
+        agent_reasoning = build_agent_reasoning(
+            react_result=react_result,
+            student_profile=request.student_profile,
+            model=model,
+            provider=provider,
+        )
+
+        ranked_programs = []
+        for prog_data in react_result.get("ranked_programs", [])[: request.limit]:
+            original_program = next(
+                (p for p in programs if p.id == prog_data.get("program_id")),
+                None,
+            )
+            if original_program:
+                ranked_programs.append(
+                    RankedProgram(
+                        **original_program.model_dump(),
+                        overall_score=prog_data.get("composite_score", 0) * 100,
+                        score_breakdown={k: v * 100 for k, v in prog_data.get("match_scores", {}).items()},
+                        match_reasons=prog_data.get("reasons", [])[:3],
+                    )
+                )
+
+        logger.info(
+            "ranking_with_explainability_completed",
+            total_evaluated=len(programs),
+            total_recommended=len(ranked_programs),
+            top_score=ranked_programs[0].overall_score if ranked_programs else 0,
+        )
+
+        return {
+            "ranked_programs": ranked_programs,
+            "agent_reasoning": agent_reasoning,
+            "react_result": react_result,
+        }
+
+    def _get_react_weights(self) -> dict[str, float]:
+        """Convert config weights (0-100) to ReAct weights (0-1)."""
+        config_weights = settings.get_ranking_weights()
+        total = sum(config_weights.values())
+
+        return {
+            "field_relevance": config_weights["field_relevance"] / total,
+            "academic_fit": config_weights["requirement_match"] / total,
+            "deadline_viability": config_weights["deadline_proximity"] / total,
+            "university_tier": config_weights["university_ranking"] / total,
+            "tuition_affordability": config_weights["tuition_affordability"] / total,
+        }
+
+    def get_scoring_evidence(
+        self,
+        program: ProgramResponse,
+        student_profile: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Get detailed scoring evidence for a single program.
+
+        This is useful for debugging or displaying detailed reasoning
+        for a specific program recommendation.
+
+        Args:
+            program: The program to evaluate.
+            student_profile: Student profile for comparison.
+
+        Returns:
+            Dictionary with scores and evidence for each dimension.
+        """
+        from app.agents.program_discovery.program_ranking_engine import (
+            _calculate_composite_score,
+            _calculate_multi_dimensional_scores,
+        )
+
+        program_dict = {
+            **program.model_dump(),
+            "institution_name": program.institution_name,
+            "institution_country": program.institution_country,
+            "institution_rank": program.institution_rank,
+        }
+
+        scores, evidence = _calculate_multi_dimensional_scores(program_dict, student_profile)
+        weights = self._get_react_weights()
+        composite = _calculate_composite_score(scores, weights)
+
+        return {
+            "program_id": program.id,
+            "program_name": program.program_name,
+            "composite_score": composite,
+            "match_scores": scores.to_dict(),
+            "evidence": evidence.to_dict(),
+            "weights_used": weights,
+        }
