@@ -17,7 +17,11 @@ pydantic-settings>=2.6.0
 
 # Authentication
 PyJWT>=2.8.0
-cryptography>=41.0.0
+cryptography>=46.0.7
+
+# Security - explicit pins for transitive dependencies (override vulnerable versions)
+pyopenssl>=26.0.0
+pyasn1>=0.6.3
 
 # LLM Providers
 openai>=1.0.0
