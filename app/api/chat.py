@@ -88,6 +88,57 @@ def _extract_country_from_question(question: str) -> str | None:
     return None
 
 
+def _extract_institution_keywords(question: str) -> list[str]:
+    """Extract institution name keywords from a question.
+
+    Handles common abbreviations and partial names like 'nus', 'mit', 'oxford'.
+    Returns keywords that can be used to search for institutions.
+    """
+    q_lower = question.lower()
+
+    # Common institution abbreviations/aliases mapped to search terms
+    institution_aliases = {
+        "nus": "National University of Singapore",
+        "ntu": "Nanyang Technological University",
+        "mit": "Massachusetts Institute of Technology",
+        "caltech": "California Institute of Technology",
+        "eth": "ETH Zurich",
+        "eth zurich": "ETH Zurich",
+        "oxford": "University of Oxford",
+        "cambridge": "University of Cambridge",
+        "harvard": "Harvard University",
+        "stanford": "Stanford University",
+        "berkeley": "University of California",
+        "imperial": "Imperial College London",
+        "ucl": "University College London",
+        "lse": "London School of Economics",
+        "yale": "Yale University",
+        "princeton": "Princeton University",
+        "columbia": "Columbia University",
+        "cornell": "Cornell University",
+        "upenn": "University of Pennsylvania",
+        "penn": "University of Pennsylvania",
+        "duke": "Duke University",
+        "chicago": "University of Chicago",
+        "ucla": "University of California",
+        "usc": "University of Southern California",
+        "nyu": "New York University",
+        "cmu": "Carnegie Mellon",
+        "carnegie mellon": "Carnegie Mellon",
+        "georgia tech": "Georgia Institute of Technology",
+        "gatech": "Georgia Institute of Technology",
+    }
+
+    keywords = []
+    for alias, full_name in institution_aliases.items():
+        # Check for word boundary matches to avoid false positives
+        pattern = rf"\b{re.escape(alias)}\b"
+        if re.search(pattern, q_lower):
+            keywords.append(full_name)
+
+    return keywords
+
+
 class ProgramQuestionRequest(BaseModel):
     """Request model for program questions."""
 
@@ -227,13 +278,44 @@ async def ask_about_programs(
         logger.info("institutions_found", count=len(institutions_context))
 
     if not is_inst_query or request.filters:
+        from app.models import InstitutionSearchRequest as InstSearchReq
         from app.models import ProgramSearchRequest
 
+        # Try to extract institution keywords from the question
+        institution_keywords = _extract_institution_keywords(request.question)
+        institution_id = None
+
+        if institution_keywords:
+            # Search for the institution by name
+            for keyword in institution_keywords:
+                inst_search = InstSearchReq(
+                    query=keyword,
+                    country=None,
+                    institution_type=None,
+                    min_rank=None,
+                    max_rank=None,
+                    ranking_source=None,
+                    ranking_year=None,
+                    page=1,
+                    page_size=1,
+                )
+                inst_result = await institution_service.search_institutions(inst_search)
+                if inst_result.items:
+                    institution_id = inst_result.items[0].id
+                    logger.info(
+                        "institution_extracted_from_question",
+                        keyword=keyword,
+                        institution_id=institution_id,
+                        institution_name=inst_result.items[0].name,
+                    )
+                    break
+
         prog_search = ProgramSearchRequest(
-            query=request.filters.get("query") or request.question[:50],
+            query=request.filters.get("query"),  # Don't use raw question as query
+            institution_id=institution_id,  # Use extracted institution if found
             field=request.filters.get("field"),
             degree_type=request.filters.get("degree_type"),
-            country=request.filters.get("country"),
+            country=_extract_country_from_question(request.question) or request.filters.get("country"),
             min_rank=None,
             max_rank=None,
             max_tuition_usd=None,
@@ -242,6 +324,12 @@ async def ask_about_programs(
         )
         prog_result = await program_service.search_programs(prog_search)
         programs_context = [p.model_dump() for p in prog_result.items]
+
+        logger.info(
+            "program_search_completed",
+            institution_id=institution_id,
+            programs_found=len(programs_context),
+        )
 
     response = await llm_service.answer_program_question(
         question=request.question,
