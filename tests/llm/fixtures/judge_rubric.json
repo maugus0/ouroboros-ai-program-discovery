@@ -1,0 +1,8 @@
+{
+  "program_qa": {
+    "rubric": "Score from 1-10 based on:\n1. Accuracy: Information about programs is correct and relevant (3 points)\n2. Completeness: All key aspects are covered (tuition, location, requirements) (3 points)\n3. Personalization: Response considers student profile when making recommendations (2 points)\n4. Clarity: Well-structured and easy to understand (2 points)\n\nDeduct points for:\n- Factual errors about programs or universities\n- Missing important details\n- Generic responses that don't address specific programs\n- Poor formatting or organization"
+  },
+  "institution_ranking": {
+    "rubric": "Score from 1-10 based on:\n1. Ranking accuracy: Correct ranking order presented (4 points)\n2. Data presentation: Scores and metrics clearly shown (3 points)\n3. Context: Relevant details about each institution (2 points)\n4. Formatting: Clear, readable list format (1 point)"
+  }
+}

@@ -57,3 +57,17 @@ class RankingError(ProgramDiscoveryBaseError):
 
     def __init__(self, message: str = "Program ranking failed"):
         super().__init__(message=message, status_code=500)
+
+
+class PromptInjectionError(ProgramDiscoveryBaseError):
+    """Raised when prompt injection is detected in user input."""
+
+    def __init__(self, message: str = "Potential prompt injection detected"):
+        super().__init__(message=message, status_code=400)
+
+
+class OutputValidationError(ProgramDiscoveryBaseError):
+    """Raised when LLM output fails validation checks."""
+
+    def __init__(self, message: str = "LLM output validation failed"):
+        super().__init__(message=message, status_code=500)
