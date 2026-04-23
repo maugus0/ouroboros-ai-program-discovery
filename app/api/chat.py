@@ -4,7 +4,7 @@ import re
 from typing import Any
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.logging import get_logger
 from app.llm import LLMService
@@ -95,10 +95,14 @@ class ProgramQuestionRequest(BaseModel):
     filters: dict[str, Any] = Field(default_factory=dict, description="Optional filters")
     student_profile: dict[str, Any] | None = Field(None, description="Optional student profile")
     limit: int = Field(10, ge=1, le=50, description="Max programs to consider")
+    include_explainability: bool = Field(
+        True,
+        description="Include agent_reasoning with ReAct decision trace and evidence",
+    )
 
 
 class ProgramQuestionResponse(BaseModel):
-    """Response model for program questions."""
+    """Response model for program questions with explainability."""
 
     answer: str
     programs_mentioned: list[str] = Field(default_factory=list)
@@ -106,12 +110,22 @@ class ProgramQuestionResponse(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
     model: str
     provider: str
+    agent_reasoning: dict[str, Any] | None = Field(
+        None,
+        description="ReAct explainability trace with decision factors, ranking breakdown, and evidence",
+    )
 
 
 class IntentExtractionRequest(BaseModel):
-    """Request model for intent extraction."""
+    """Request model for intent extraction.
 
-    message: str = Field(..., description="The user's natural language message")
+    Accepts both 'message' and 'text' fields for backward compatibility
+    with orchestrator clients that may send either field name.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    message: str = Field(..., alias="text", description="The user's natural language message")
 
 
 class IntentExtractionResponse(BaseModel):
@@ -234,7 +248,18 @@ async def ask_about_programs(
         programs_context=programs_context,
         institutions_context=institutions_context,
         student_profile=request.student_profile,
+        include_explainability=request.include_explainability,
     )
+
+    agent_reasoning = response.get("agent_reasoning") if request.include_explainability else None
+
+    if agent_reasoning:
+        logger.info(
+            "program_question_with_explainability",
+            total_evaluated=agent_reasoning.get("total_programs_evaluated", 0),
+            total_recommended=agent_reasoning.get("total_programs_recommended", 0),
+            confidence=agent_reasoning.get("confidence", 0),
+        )
 
     return ProgramQuestionResponse(
         answer=response["answer"],
@@ -243,6 +268,7 @@ async def ask_about_programs(
         confidence=response["confidence"],
         model=response["model"],
         provider=response["provider"],
+        agent_reasoning=agent_reasoning,
     )
 
 

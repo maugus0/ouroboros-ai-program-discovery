@@ -26,6 +26,14 @@ from app.models.crawl_job import (
     CrawlJobResponse,
     CrawlJobUpdate,
 )
+from app.models.explainability import (
+    ProgramAgentReasoning,
+    ProgramDecisionTraceEntry,
+    ProgramEvidenceModel,
+    ProgramMatchBreakdown,
+    ProgramMatchScoresModel,
+    RankingBreakdownSummary,
+)
 from app.models.institution import (
     InstitutionBase,
     InstitutionCreate,
@@ -114,4 +122,11 @@ __all__ = [
     "CrawlJobDB",
     "CrawlJobResponse",
     "CrawlJobUpdate",
+    # Explainability
+    "ProgramAgentReasoning",
+    "ProgramDecisionTraceEntry",
+    "ProgramEvidenceModel",
+    "ProgramMatchBreakdown",
+    "ProgramMatchScoresModel",
+    "RankingBreakdownSummary",
 ]
