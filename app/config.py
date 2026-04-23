@@ -70,6 +70,10 @@ class Settings(BaseSettings):
     USE_MOCK_DATA: bool = True
     ALLOW_DB_FAILURE: bool = False
 
+    # ========== Security ==========
+    ENABLE_PROMPT_INJECTION_DETECTION: bool = True
+    MAX_INPUT_LENGTH: int = 50000
+
     # ========== Docker ==========
     RUN_STARTUP_SCRIPTS: bool = True
     DOCKER_MYSQL_PORT: int = 3309

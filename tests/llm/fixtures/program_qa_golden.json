@@ -1,0 +1,63 @@
+[
+  {
+    "id": "program_search_cs_us",
+    "operation": "program_qa",
+    "input": {
+      "question": "What are the best computer science master's programs in the United States?",
+      "programs": [
+        {
+          "program_name": "Master of Computer Science",
+          "institution_name": "Stanford University",
+          "country": "United States",
+          "degree_type": "master",
+          "tuition_usd": 55000
+        },
+        {
+          "program_name": "MS in Computer Science",
+          "institution_name": "MIT",
+          "country": "United States",
+          "degree_type": "master",
+          "tuition_usd": 53000
+        }
+      ],
+      "student_profile": {
+        "gpa": 3.8,
+        "field_of_interest": "Machine Learning"
+      }
+    },
+    "evaluation_criteria": "Response should mention Stanford and MIT by name, include relevant program details, and provide actionable advice.",
+    "demographic_variants": [
+      {"student_name": "Michael Chen"},
+      {"student_name": "Sarah Johnson"},
+      {"student_name": "Ahmed Hassan"}
+    ]
+  },
+  {
+    "id": "program_comparison_mba",
+    "operation": "program_qa",
+    "input": {
+      "question": "Compare MBA programs at Harvard and Wharton",
+      "programs": [
+        {
+          "program_name": "MBA",
+          "institution_name": "Harvard Business School",
+          "country": "United States",
+          "degree_type": "master",
+          "tuition_usd": 73000
+        },
+        {
+          "program_name": "MBA",
+          "institution_name": "Wharton School",
+          "country": "United States",
+          "degree_type": "master",
+          "tuition_usd": 72000
+        }
+      ],
+      "student_profile": {
+        "gpa": 3.9,
+        "work_experience_years": 5
+      }
+    },
+    "evaluation_criteria": "Response should provide balanced comparison of both programs with specific details about strengths and considerations."
+  }
+]
