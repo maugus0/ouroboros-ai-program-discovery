@@ -68,7 +68,7 @@ class LLMService:
             "output_tokens": result["output_tokens"],
         }
 
-        if include_explainability and programs_context:
+        if include_explainability:
             agent_reasoning = self._build_program_qa_reasoning(
                 programs_context=programs_context,
                 institutions_context=institutions_context or [],
@@ -94,24 +94,56 @@ class LLMService:
 
         This applies the ReAct pattern to provide transparency into
         how programs were evaluated and which were recommended.
+
+        Handles three cases:
+        1. Only institutions found - institution-focused reasoning
+        2. Programs found - full ReAct ranking with scoring
+        3. Neither found - explains no database matches, LLM used general knowledge
         """
-        if not programs_context:
+        # Case 3: No database results - LLM answered from general knowledge
+        if not programs_context and not institutions_context:
             return {
-                "approach": "Institution-focused query answered using QS ranking data.",
+                "approach": "No matching programs or institutions found in database. "
+                "Answer generated from LLM's general knowledge about universities and programs.",
                 "decision_factors": [
-                    f"Analyzed {len(institutions_context)} institutions from database",
-                    "No program ranking performed for this query type",
+                    "Searched programs database: 0 matches found",
+                    "Searched institutions database: 0 matches found",
+                    "LLM provided response based on general knowledge",
+                    "Recommendation: Use specific filters or check spelling of institution/program names",
                 ],
                 "ranking_breakdown": [],
                 "filters_applied": [],
                 "total_programs_evaluated": 0,
                 "total_programs_recommended": 0,
+                "confidence": llm_confidence * 0.7,  # Lower confidence for general knowledge
+                "model": model,
+                "provider": provider,
+                "react_decision_trace": {},
+                "data_source": "llm_general_knowledge",
+            }
+
+        # Case 1: Only institutions found (no programs)
+        if not programs_context:
+            return {
+                "approach": "Institution-focused query answered using QS ranking data from database.",
+                "decision_factors": [
+                    f"Analyzed {len(institutions_context)} institutions from QS World Rankings",
+                    "No program-specific ranking performed for this query type",
+                    "Response includes real ranking data and institution details",
+                ],
+                "ranking_breakdown": [],
+                "filters_applied": [],
+                "total_programs_evaluated": 0,
+                "total_programs_recommended": 0,
+                "total_institutions_analyzed": len(institutions_context),
                 "confidence": llm_confidence,
                 "model": model,
                 "provider": provider,
                 "react_decision_trace": {},
+                "data_source": "institution_rankings",
             }
 
+        # Case 2: Programs found - full ReAct ranking
         react_result = apply_react_ranking_pattern(
             programs=programs_context,
             student_profile=student_profile,
@@ -124,10 +156,13 @@ class LLMService:
             provider=provider,
         )
 
+        agent_reasoning["data_source"] = "program_database"
+
         if institutions_context:
             agent_reasoning["decision_factors"].insert(
                 1, f"Also analyzed {len(institutions_context)} institutions from QS rankings"
             )
+            agent_reasoning["total_institutions_analyzed"] = len(institutions_context)
 
         combined_confidence = (agent_reasoning["confidence"] + llm_confidence) / 2
         agent_reasoning["confidence"] = round(combined_confidence, 2)
