@@ -6,6 +6,7 @@ from app.repositories.db_pool import (
     close_pool,
     create_pool,
     get_pool,
+    run_migrations,
 )
 from app.repositories.institution_ranking_repo import InstitutionRankingRepository
 from app.repositories.institution_repo import InstitutionRepository
@@ -24,4 +25,5 @@ __all__ = [
     "close_pool",
     "create_pool",
     "get_pool",
+    "run_migrations",
 ]
