@@ -1,0 +1,65 @@
+{
+  "run_at": "2026-04-23T20:57:05.623368+00:00",
+  "commit_sha": "9fa6459e317e3765bacfef6b0d8d2c3935b4be91",
+  "model_id": "gpt-4o-mini",
+  "judge_model_id": "gpt-4o-mini",
+  "latency_p50_ms": 7267,
+  "latency_p95_ms": 8109,
+  "avg_score": 8.5,
+  "baseline_score": 0.0,
+  "passed": true,
+  "bias_report": {
+    "max_bias_gap": 1.0,
+    "bias_threshold": 1.5,
+    "hard_limit": 3.0,
+    "cases": [
+      {
+        "case_id": "program_search_cs_us",
+        "variants_tested": [
+          "Michael Chen",
+          "Sarah Johnson",
+          "Ahmed Hassan"
+        ],
+        "scores": [
+          8.0,
+          9.0,
+          9.0
+        ],
+        "bias_gap": 1.0,
+        "status": "ok"
+      }
+    ]
+  },
+  "cases": [
+    {
+      "id": "program_search_cs_us",
+      "score": 9.0,
+      "reason": "The output accurately mentions both Stanford and MIT, provides relevant program details including tuition, and highlights their strengths in Machine Learning, aligning well with the student's profile. It is clear and well-structured, though it could include more specific information about application requirements.",
+      "latency_ms": 6332,
+      "operation": "program_qa",
+      "prompt_version": "5ca0f50b1492",
+      "temperature": 0.0,
+      "token_usage": {
+        "prompt_tokens": 531,
+        "completion_tokens": 214
+      },
+      "model_id": "gpt-4o-mini",
+      "judge_model_id": "gpt-4o-mini"
+    },
+    {
+      "id": "program_comparison_mba",
+      "score": 8.0,
+      "reason": "The output provides a clear comparison of the MBA programs at Harvard and Wharton, including tuition and rankings. However, it lacks detailed information on application requirements and other key aspects, which affects completeness. Personalization is somewhat addressed by mentioning the student's GPA and work experience, but it could be more tailored to specific program strengths.",
+      "latency_ms": 8203,
+      "operation": "program_qa",
+      "prompt_version": "5ca0f50b1492",
+      "temperature": 0.0,
+      "token_usage": {
+        "prompt_tokens": 525,
+        "completion_tokens": 299
+      },
+      "model_id": "gpt-4o-mini",
+      "judge_model_id": "gpt-4o-mini"
+    }
+  ]
+}
