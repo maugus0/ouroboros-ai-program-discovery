@@ -266,6 +266,38 @@ Seeding 1504 institutions...
 Done! Seeded 1504 institutions with QS 2026 rankings.
 ```
 
+### 5c. Seed Singapore CS Programs (Recommended)
+
+Seed additional Computer Science and related programs from Singapore universities (NTU, SMU, SUTD):
+
+```bash
+python scripts/seed_singapore_cs_programs.py
+```
+
+This seeds **11 programs** including:
+- **NTU**: MSc Data Science, MSc AI, Master of Computing in Applied AI, MSc Cyber Security, MSc Blockchain
+- **SMU**: MSc Computing, Master of IT in Business (Analytics Track)
+- **SUTD**: MSc Technology & Design (AI), MSc Technology & Design (Cybersecurity), MSc Design & AI for Enterprise, MSc Security by Design
+
+Expected output:
+
+```
+=== Nanyang Technological University, Singapore (NTU Singapore) ===
+  + Created: Master of Science in Data Science (...)
+  + Created: Master of Science in Artificial Intelligence (...)
+  ...
+=== Singapore Management University ===
+  + Created: Master of Science in Computing (...)
+  ...
+=== Singapore University of Technology and Design ===
+  + Created: Master of Science in Technology and Design (Artificial Intelligence) (...)
+  ...
+
+✓ Seeded 11 programs with 0 requirements
+```
+
+> **Note**: Run this after `seed_qs_rankings.py` as it requires institutions to exist.
+
 ### 5b. (Optional) Enrich Institution Data
 
 The QS rankings data doesn't include city, website URL, or institution type. Use the enrichment script to fill in missing fields using LLM:
@@ -800,6 +832,7 @@ ouroboros-ai-program-discovery/
 │   ├── generate_qs_json.py         # Parse QS Excel → JSON
 │   ├── seed_qs_rankings.py         # Seed institutions + rankings
 │   ├── seed_sample_programs.py     # Seed sample programs
+│   ├── seed_singapore_cs_programs.py  # Seed Singapore CS/AI/Data programs (NTU, SMU, SUTD)
 │   └── enrich_institutions.py      # Enrich institution data via LLM
 ├── data/
 │   └── qs_world_rankings_2026.json # Generated QS data (1504 universities)
