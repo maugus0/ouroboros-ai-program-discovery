@@ -29,7 +29,7 @@ from app.models import (
     DegreeType,
     ProgramCreate,
     ProgramMode,
-    ProgramRequirementBase,
+    ProgramRequirementCreate,
     RequirementType,
 )
 from app.repositories import (
@@ -385,14 +385,14 @@ async def seed_programs():
 
                 for req in requirements_data:
                     try:
-                        req_base = ProgramRequirementBase(
+                        req_create = ProgramRequirementCreate(
                             program_id=program_id,
                             requirement_type=req["type"],
-                            name=req["name"],
-                            value=req["value"],
-                            mandatory=req.get("mandatory", True),
+                            requirement_name=req["name"],
+                            requirement_value=req["value"],
+                            is_mandatory=req.get("mandatory", True),
                         )
-                        await requirement_repo.create(req_base)
+                        await requirement_repo.create(req_create)
                         total_requirements += 1
                     except Exception as exc:
                         logger.warning("requirement_create_failed", error=str(exc), req=req["name"])
